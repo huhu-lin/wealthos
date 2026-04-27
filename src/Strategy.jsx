@@ -285,8 +285,8 @@ export default function Strategy({ allAssets }) {
       <div style={{color:C.textMuted, fontSize:12, marginTop:-8}}>
         布林通道 (20,2) + KDJ (9,3,3)｜箭頭標記為訊號觸發點
       </div>
-      <KChart data={twData} ticker="00675L" isUS={false} assets={allAssets}/>
-      <KChart data={usData} ticker="QLD" isUS={true} assets={allAssets}/>
+      <KChart data={twData} ticker="00675L" isUS={false} assets={allAssets.filter(a=>a.account==="tw")}/>
+      <KChart data={usData} ticker="QLD" isUS={true} assets={allAssets.filter(a=>a.account==="us")}/>
     </div>
   );
 }
