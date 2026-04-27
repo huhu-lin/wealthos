@@ -179,7 +179,10 @@ function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, 
   const actualLeverage = netWorth > 0 ? actualExposure / netWorth : 0;
 
   const totalCost = [...twAssets, ...usAssets, ...cryptoAssets].reduce((s, x) => s + (x.cost_total || 0), 0);
-  const totalPnl = totalAssets - otherTotal - totalCost;
+  const totalPnl = [...twAssets,...usAssets,...cryptoAssets].reduce((s,x)=>{
+  const ct = x.cost_total||(x.cost||0)*(x.shares||0);
+  return ct>0 ? s+(x.value_twd-ct) : s;
+},0);
   const totalPnlPct = totalCost > 0 ? totalPnl / totalCost * 100 : 0;
 
   const pieData = [
@@ -198,7 +201,7 @@ function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, 
         <KPI label="總負債" value={totalLiab} color={C.red} />
         <KPI label="財務槓桿" value={leverage.toFixed(2) + "x"} prefix="" color={C.gold} sub={`負債比 ${pct(debtRatio)}`} />
         <KPI label="實際曝險倍率" value={actualLeverage.toFixed(2) + "x"} prefix="" color={C.orange} sub="含ETF內含槓桿" />
-        <KPI label="未實現損益" value={0} prefix="" color={totalPnl >= 0 ? C.accent : C.red}
+        <KPI label="未實現損益" value={totalPnl} prefix="" color={totalPnl >= 0 ? C.accent : C.red}
           sub={`${totalPnl >= 0 ? "+" : ""}NT$${fmt(totalPnl)} (${totalPnlPct >= 0 ? "+" : ""}${totalPnlPct.toFixed(1)}%)`} />
         <KPI label="匯率 USD/TWD" value={usdRate.toFixed(2)} prefix="" color={C.textMuted} />
       </div>
