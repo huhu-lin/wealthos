@@ -166,6 +166,10 @@ function Overview({twAssets,usAssets,cryptoAssets,otherAssets,liabilities,snapsh
   const leverage = netWorth>0 ? totalAssets/netWorth : 0;
   const debtRatio = totalAssets>0 ? totalLiab/totalAssets : 0;
 
+  // 實際曝險（含ETF內含槓桿）
+  const actualExposure = [...twAssets,...usAssets].reduce((s,x)=>s+(x.value_twd||0)*(x.leverage_ratio||1),0) + cryptoTotal + otherTotal;
+  const actualLeverage = netWorth>0 ? actualExposure/netWorth : 0;
+
   const totalCost = [...twAssets,...usAssets,...cryptoAssets].reduce((s,x)=>s+(x.cost_total||0),0);
   const totalPnl = totalAssets - otherTotal - totalCost;
   const totalPnlPct = totalCost>0 ? totalPnl/totalCost*100 : 0;
@@ -184,7 +188,8 @@ function Overview({twAssets,usAssets,cryptoAssets,otherAssets,liabilities,snapsh
         <KPI label="總淨值" value={netWorth} color={C.accent}/>
         <KPI label="總資產" value={totalAssets} color={C.blue}/>
         <KPI label="總負債" value={totalLiab} color={C.red}/>
-        <KPI label="槓桿倍率" value={leverage.toFixed(2)+"x"} prefix="" color={C.gold} sub={`負債比 ${pct(debtRatio)}`}/>
+        <KPI label="財務槓桿" value={leverage.toFixed(2)+"x"} prefix="" color={C.gold} sub={`負債比 ${pct(debtRatio)}`}/>
+        <KPI label="實際曝險倍率" value={actualLeverage.toFixed(2)+"x"} prefix="" color={C.orange} sub="含ETF內含槓桿"/>
         <KPI label="未實現損益" value={0} prefix="" color={totalPnl>=0?C.accent:C.red}
           sub={`${totalPnl>=0?"+":""}NT$${fmt(totalPnl)} (${totalPnlPct>=0?"+":""}${totalPnlPct.toFixed(1)}%)`}/>
         <KPI label="匯率 USD/TWD" value={usdRate.toFixed(2)} prefix="" color={C.textMuted}/>
@@ -264,7 +269,7 @@ function Overview({twAssets,usAssets,cryptoAssets,otherAssets,liabilities,snapsh
 // ══════════════════════════════════════════════════════════
 // 台股帳戶
 // ══════════════════════════════════════════════════════════
-const emptyTW = {type:"etf",name:"",ticker:"",shares:"",price:"",cost:"",value_twd:"",target:"",note:""};
+const emptyTW = {type:"etf",name:"",ticker:"",shares:"",price:"",cost:"",value_twd:"",target:"",leverage_ratio:"1",note:""};
 
 function TWAccount({assets,reload}) {
   const [modal,setModal] = useState(null);
@@ -288,7 +293,9 @@ function TWAccount({assets,reload}) {
       type:a.type||"etf", name:a.name, ticker:a.ticker||"",
       shares:String(a.shares||""), price:String(a.price||""),
       cost:String(a.cost||""), value_twd:String(a.value_twd||""),
-      target:String(a.target>0?a.target*100:""), note:a.note||""
+      target:String(a.target>0?a.target*100:""),
+      leverage_ratio:String(a.leverage_ratio||1),
+      note:a.note||""
     });
     setModal(a);
   };
@@ -302,7 +309,9 @@ function TWAccount({assets,reload}) {
       shares, price:parseFloat(form.price)||0,
       cost, cost_total:cost*shares,
       value_twd:parseFloat(form.value_twd)||0,
-      target:(parseFloat(form.target)||0)/100, note:form.note,
+      target:(parseFloat(form.target)||0)/100,
+      leverage_ratio:parseFloat(form.leverage_ratio)||1,
+      note:form.note,
     };
     if(modal==="add") await supabase.from("assets").insert(data);
     else await supabase.from("assets").update(data).eq("id",modal.id);
@@ -369,6 +378,7 @@ function TWAccount({assets,reload}) {
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:3}}>
                 <span style={{fontWeight:600,fontSize:14}}>{a.name}</span>
                 {a.ticker&&<Badge text={a.ticker} color={C.blue}/>}
+                {(a.leverage_ratio||1)>1&&<Badge text={`${a.leverage_ratio}x�槓桿`} color={C.orange}/>}
               </div>
               <div style={{color:C.textMuted,fontSize:11}}>
                 {a.shares>0&&`${a.shares.toLocaleString()} 股`}
@@ -422,6 +432,7 @@ function TWAccount({assets,reload}) {
               <Inp label="現價 (NT$)" type="number" value={form.price} onChange={v=>handleChange("price",v)} placeholder="0"/>
               <Inp label="成本價 (NT$)" type="number" value={form.cost} onChange={set("cost")} placeholder="0"/>
               <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50"/>
+              <Inp label="槓桿倍數" type="number" value={form.leverage_ratio} onChange={set("leverage_ratio")} placeholder="1"/>
             </>}
             <Inp label="市值 (NT$)" type="number" value={form.value_twd} onChange={set("value_twd")} placeholder="0"/>
             <Inp label="備註" value={form.note} onChange={set("note")} placeholder="選填"/>
@@ -439,7 +450,7 @@ function TWAccount({assets,reload}) {
 // ══════════════════════════════════════════════════════════
 // 美股帳戶
 // ══════════════════════════════════════════════════════════
-const emptyUS = {type:"etf",name:"",ticker:"",shares:"",price_usd:"",cost:"",value_usd:"",target:"",note:""};
+const emptyUS = {type:"etf",name:"",ticker:"",shares:"",price_usd:"",cost:"",value_usd:"",target:"",leverage_ratio:"1",note:""};
 
 function USAccount({assets,usdRate,reload}) {
   const [modal,setModal] = useState(null);
@@ -463,7 +474,9 @@ function USAccount({assets,usdRate,reload}) {
       type:a.type||"etf", name:a.name, ticker:a.ticker||"",
       shares:String(a.shares||""), price_usd:String(a.price_usd||""),
       cost:String(a.cost||""), value_usd:String(a.value_usd||""),
-      target:String(a.target>0?a.target*100:""), note:a.note||""
+      target:String(a.target>0?a.target*100:""),
+      leverage_ratio:String(a.leverage_ratio||1),
+      note:a.note||""
     });
     setModal(a);
   };
@@ -478,7 +491,9 @@ function USAccount({assets,usdRate,reload}) {
       shares, price_usd:parseFloat(form.price_usd)||0,
       cost, cost_total:cost*shares*usdRate,
       value_usd, value_twd:value_usd*usdRate,
-      target:(parseFloat(form.target)||0)/100, note:form.note,
+      target:(parseFloat(form.target)||0)/100,
+      leverage_ratio:parseFloat(form.leverage_ratio)||1,
+      note:form.note,
     };
     if(modal==="add") await supabase.from("assets").insert(data);
     else await supabase.from("assets").update(data).eq("id",modal.id);
@@ -547,6 +562,7 @@ function USAccount({assets,usdRate,reload}) {
               <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:3}}>
                 <span style={{fontWeight:600,fontSize:14}}>{a.name}</span>
                 {a.ticker&&<Badge text={a.ticker} color={C.blue}/>}
+                {(a.leverage_ratio||1)>1&&<Badge text={`${a.leverage_ratio}x槓桿`} color={C.orange}/>}
               </div>
               <div style={{color:C.textMuted,fontSize:11}}>
                 {a.shares>0&&`${a.shares} 股`}
@@ -599,6 +615,7 @@ function USAccount({assets,usdRate,reload}) {
               <Inp label="現價 (USD)" type="number" value={form.price_usd} onChange={v=>handleChange("price_usd",v)} placeholder="0"/>
               <Inp label="成本價 (USD)" type="number" value={form.cost} onChange={set("cost")} placeholder="0"/>
               <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50"/>
+              <Inp label="槓桿倍數" type="number" value={form.leverage_ratio} onChange={set("leverage_ratio")} placeholder="1"/>
             </>}
             <Inp label="金額 (USD)" type="number" value={form.value_usd} onChange={set("value_usd")} placeholder="0"/>
             <Inp label="備註" value={form.note} onChange={set("note")} placeholder="選填"/>
@@ -840,7 +857,6 @@ function Liabilities({liabilities,reload}) {
     reload();
   };
 
-  // 自動扣款：檢查今天是否為扣款日
   const processPayment = async (l) => {
     if(!window.confirm(`確認本月還款 NT$${fmt(l.monthly)}？餘額將從 NT$${fmt(l.value)} 扣減至 NT$${fmt(l.value-l.monthly)}`)) return;
     await supabase.from("liabilities").update({value:l.value-l.monthly}).eq("id",l.id);
@@ -1010,6 +1026,11 @@ function Pledge({pledges,reload}) {
             </div>
           ))}
         </div>
+        {overallRatio>0&&overallRatio<200&&(
+          <div style={{marginTop:12,padding:"9px 12px",background:C.redDim,border:`1px solid ${C.red}40`,borderRadius:8,color:C.red,fontSize:12}}>
+            ⚠️ 整戶維持率 {overallRatio.toFixed(1)}% 低於 200%，請注意！
+          </div>
+        )}
       </Card>
 
       {pledges.length===0&&(
@@ -1026,7 +1047,6 @@ function Pledge({pledges,reload}) {
       ).map(([ticker,items])=>{
         const groupMarket = items.reduce((s,p)=>s+(p.market_value||0),0);
         const groupBorrow = items.reduce((s,p)=>s+(p.borrow_amount||0),0);
-        const groupRatio = groupBorrow>0?groupMarket/groupBorrow*100:0;
         return (
           <Card key={ticker} style={{padding:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -1105,6 +1125,8 @@ function Pledge({pledges,reload}) {
     </div>
   );
 }
+
+// ══════════════════════════════════════════════════════════
 // 主元件
 // ══════════════════════════════════════════════════════════
 export default function App() {
@@ -1131,7 +1153,6 @@ export default function App() {
     setUsdRate(rate||31.5);
     setLoading(false);
 
-    // 每日自動快照
     const today = new Date().toISOString().slice(0,10);
     const existing = s.data?.find(x=>x.date===today);
     if(!existing && (a.data||[]).length>0) {
