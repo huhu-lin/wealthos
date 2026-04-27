@@ -279,177 +279,197 @@ function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, 
 // ══════════════════════════════════════════════════════════
 // 台股帳戶
 // ══════════════════════════════════════════════════════════
-const emptyTW = { type: "etf", name: "", ticker: "", shares: "", price: "", cost: "", value_twd: "", target: "", leverage_ratio: "1", note: "" };
+const emptyTW = {type:"etf",name:"",ticker:"",shares:"",price:"",cost:"",value_twd:"",target:"",leverage_ratio:"1",note:""};
 
-function TWAccount({ assets, reload }) {
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState(emptyTW);
-  const [saving, setSaving] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  const [fetchMsg, setFetchMsg] = useState("");
-  const set = k => v => setForm(p => ({ ...p, [k]: v }));
+function TWAccount({assets,reload}) {
+  const [modal,setModal] = useState(null);
+  const [form,setForm] = useState(emptyTW);
+  const [saving,setSaving] = useState(false);
+  const [fetching,setFetching] = useState(false);
+  const [fetchMsg,setFetchMsg] = useState("");
+  const set = k => v => setForm(p=>({...p,[k]:v}));
 
-  const handleChange = (k, v) => {
-    const next = { ...form, [k]: v };
-    const shares = parseFloat(k === "shares" ? v : next.shares) || 0;
-    const price = parseFloat(k === "price" ? v : next.price) || 0;
-    if (shares > 0 && price > 0) next.value_twd = String((shares * price).toFixed(0));
+  const handleChange = (k,v) => {
+    const next = {...form,[k]:v};
+    const shares = parseFloat(k==="shares"?v:next.shares)||0;
+    const price = parseFloat(k==="price"?v:next.price)||0;
+    if(shares>0&&price>0) next.value_twd = String((shares*price).toFixed(0));
     setForm(next);
   };
 
   const openAdd = () => { setForm(emptyTW); setModal("add"); };
   const openEdit = a => {
     setForm({
-      type: a.type || "etf", name: a.name, ticker: a.ticker || "",
-      shares: String(a.shares || ""), price: String(a.price || ""),
-      cost: String(a.cost || ""), value_twd: String(a.value_twd || ""),
-      target: String(a.target > 0 ? a.target * 100 : ""),
-      leverage_ratio: String(a.leverage_ratio || 1),
-      note: a.note || ""
+      type:a.type||"etf", name:a.name, ticker:a.ticker||"",
+      shares:String(a.shares||""), price:String(a.price||""),
+      cost:String(a.cost||""), value_twd:String(a.value_twd||""),
+      target:String(a.target>0?a.target*100:""),
+      leverage_ratio:String(a.leverage_ratio||1),
+      note:a.note||""
     });
     setModal(a);
   };
 
   const save = async () => {
     setSaving(true);
-    const shares = parseFloat(form.shares) || 0;
-    const cost = parseFloat(form.cost) || 0;
+    const shares = parseFloat(form.shares)||0;
+    const cost = parseFloat(form.cost)||0;
     const data = {
-      account: "tw", type: form.type, name: form.name, ticker: form.ticker,
-      shares, price: parseFloat(form.price) || 0,
-      cost, cost_total: cost * shares,
-      value_twd: parseFloat(form.value_twd) || 0,
-      target: (parseFloat(form.target) || 0) / 100,
-      leverage_ratio: parseFloat(form.leverage_ratio) || 1,
-      note: form.note,
+      account:"tw", type:form.type, name:form.name, ticker:form.ticker,
+      shares, price:parseFloat(form.price)||0,
+      cost, cost_total:cost*shares,
+      value_twd:parseFloat(form.value_twd)||0,
+      target:(parseFloat(form.target)||0)/100,
+      leverage_ratio:parseFloat(form.leverage_ratio)||1,
+      note:form.note,
     };
-    if (modal === "add") await supabase.from("assets").insert(data);
-    else await supabase.from("assets").update(data).eq("id", modal.id);
+    if(modal==="add") await supabase.from("assets").insert(data);
+    else await supabase.from("assets").update(data).eq("id",modal.id);
     setSaving(false); setModal(null); reload();
   };
 
   const del = async id => {
-    if (!window.confirm("確定刪除？")) return;
-    await supabase.from("assets").delete().eq("id", id);
+    if(!window.confirm("確定刪除？")) return;
+    await supabase.from("assets").delete().eq("id",id);
     reload();
   };
 
   const refreshPrices = async () => {
     setFetching(true); setFetchMsg("抓取股價中...");
-    const etfs = assets.filter(a => a.ticker && a.type === "etf");
-    for (const a of etfs) {
+    const etfs = assets.filter(a=>a.ticker&&a.type==="etf");
+    for(const a of etfs) {
       const price = await fetchTWPrice(a.ticker);
-      if (price) {
-        const value_twd = price * (a.shares || 0);
-        await supabase.from("assets").update({ price, value_twd }).eq("id", a.id);
+      if(price) {
+        const value_twd = price*(a.shares||0);
+        await supabase.from("assets").update({price,value_twd}).eq("id",a.id);
         setFetchMsg(`✅ ${a.ticker}: NT$${price}`);
       }
     }
     setFetching(false); setFetchMsg("✅ 更新完成");
-    setTimeout(() => setFetchMsg(""), 3000);
+    setTimeout(()=>setFetchMsg(""),3000);
     reload();
   };
 
-  const etfs = assets.filter(a => a.type === "etf");
-  const cash = assets.filter(a => a.type === "cash");
-  const etfTotal = etfs.reduce((s, x) => s + x.value_twd, 0);
-  const cashTotal = cash.reduce((s, x) => s + x.value_twd, 0);
-  const total = etfTotal + cashTotal;
+  const etfs = assets.filter(a=>a.type==="etf");
+  const cash = assets.filter(a=>a.type==="cash");
+  const total = assets.reduce((s,x)=>s+(x.value_twd||0),0);
 
   const renderPnl = a => {
-    const ct = a.cost_total || (a.cost || 0) * (a.shares || 0);
-    if (!ct) return null;
-    const pnl = a.value_twd - ct;
-    const pp = pnl / ct * 100;
-    return <div style={{ fontSize: 11, color: pnl >= 0 ? C.accent : C.red }}>{pnl >= 0 ? "+" : ""}{fmt(pnl)} ({pp >= 0 ? "+" : ""}{pp.toFixed(1)}%)</div>;
+    const ct = a.cost_total||(a.cost||0)*(a.shares||0);
+    if(!ct) return null;
+    const pnl = a.value_twd-ct;
+    const pp = pnl/ct*100;
+    return <div style={{fontSize:11,color:pnl>=0?C.accent:C.red}}>{pnl>=0?"+":""}{fmt(pnl)} ({pp>=0?"+":""}{pp.toFixed(1)}%)</div>;
+  };
+
+  const renderAllocation = a => {
+    if(!total) return null;
+    const actual = a.value_twd/total*100;
+    const target = (a.target||0)*100;
+    if(!target) return <div style={{color:C.textMuted,fontSize:10}}>{actual.toFixed(1)}%</div>;
+    const diff = actual - target;
+    const diffAmt = (a.value_twd) - (target/100*total);
+    return (
+      <div style={{fontSize:10,textAlign:"right"}}>
+        <div style={{color:C.textMuted}}>實際 {actual.toFixed(1)}% ｜ 目標 {target.toFixed(1)}%</div>
+        <div style={{color:diff>0?C.red:C.accent}}>
+          {diff>0?"▲":"▼"} {Math.abs(diff).toFixed(1)}% （{diff>0?"賣出":"買入"} NT${fmt(Math.abs(diffAmt))}）
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-        <KPI label="台股總值" value={total} color={C.accent} />
-        <KPI label="ETF/股票" value={etfTotal} color={C.blue} />
-        <KPI label="台幣現金" value={cashTotal} color={C.purple} />
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+        <KPI label="台股總值" value={total} color={C.accent}/>
+        <KPI label="ETF/股票" value={etfs.reduce((s,x)=>s+x.value_twd,0)} color={C.blue}/>
+        <KPI label="台幣現金" value={cash.reduce((s,x)=>s+x.value_twd,0)} color={C.purple}/>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>ETF / 股票</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {fetchMsg && <span style={{ color: C.accent, fontSize: 12, alignSelf: "center" }}>{fetchMsg}</span>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontWeight:600,fontSize:14}}>ETF / 股票</div>
+        <div style={{display:"flex",gap:8}}>
+          {fetchMsg&&<span style={{color:C.accent,fontSize:12,alignSelf:"center"}}>{fetchMsg}</span>}
           <Btn onClick={refreshPrices} color={C.blue} outline disabled={fetching}>🔄 更新股價</Btn>
           <Btn onClick={openAdd}>+ 新增</Btn>
         </div>
       </div>
 
-      {etfs.map(a => (
-        <Card key={a.id} style={{ padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {etfs.map(a=>(
+        <Card key={a.id} style={{padding:"12px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{a.name}</span>
-                {a.ticker && <Badge text={a.ticker} color={C.blue} />}
-                {(a.leverage_ratio || 1) > 1 && <Badge text={`${a.leverage_ratio}x�槓桿`} color={C.orange} />}
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:3}}>
+                <span style={{fontWeight:600,fontSize:14}}>{a.name}</span>
+                {a.ticker&&<Badge text={a.ticker} color={C.blue}/>}
+                {(a.leverage_ratio||1)>1&&<Badge text={`${a.leverage_ratio}x槓桿`} color={C.orange}/>}
               </div>
-              <div style={{ color: C.textMuted, fontSize: 11 }}>
-                {a.shares > 0 && `${a.shares.toLocaleString()} 股`}
-                {a.price > 0 && ` × NT$${a.price}`}
-                {a.cost > 0 && ` ｜ 成本 NT$${a.cost}`}
-                {a.target > 0 && ` ｜ 目標 ${pct(a.target)}`}
+              <div style={{color:C.textMuted,fontSize:11}}>
+                {a.shares>0&&`${a.shares.toLocaleString()} 股`}
+                {a.price>0&&` × NT$${a.price}`}
+                {a.cost>0&&` ｜ 成本 NT$${a.cost}`}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ color: C.accent, fontFamily: "monospace", fontWeight: 700, fontSize: 14 }}>NT${fmt(a.value_twd)}</div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:C.accent,fontFamily:"monospace",fontWeight:700,fontSize:14}}>NT${fmt(a.value_twd)}</div>
                 {renderPnl(a)}
-                {total > 0 && <div style={{ color: C.textMuted, fontSize: 10 }}>{pct(a.value_twd / total)}</div>}
+                {renderAllocation(a)}
               </div>
-              <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
-              <Btn onClick={() => del(a.id)} color={C.red} outline small>刪除</Btn>
+              <Btn onClick={()=>openEdit(a)} outline small>編輯</Btn>
+              <Btn onClick={()=>del(a.id)} color={C.red} outline small>刪除</Btn>
             </div>
           </div>
         </Card>
       ))}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>台幣現金</div>
-        <Btn onClick={() => { setForm({ ...emptyTW, type: "cash" }); setModal("add"); }}>+ 新增</Btn>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
+        <div style={{fontWeight:600,fontSize:14}}>台幣現金</div>
+        <Btn onClick={()=>{setForm({...emptyTW,type:"cash"});setModal("add");}}>+ 新增</Btn>
       </div>
 
-      {cash.map(a => (
-        <Card key={a.id} style={{ padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {cash.map(a=>(
+        <Card key={a.id} style={{padding:"12px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 3 }}>{a.name}</div>
-              <div style={{ color: C.textMuted, fontSize: 11 }}>{a.note}</div>
+              <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>{a.name}</div>
+              <div style={{color:C.textMuted,fontSize:11}}>{a.note}</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ color: C.purple, fontFamily: "monospace", fontWeight: 700, fontSize: 14 }}>NT${fmt(a.value_twd)}</div>
-              <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
-              <Btn onClick={() => del(a.id)} color={C.red} outline small>刪除</Btn>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:C.purple,fontFamily:"monospace",fontWeight:700,fontSize:14}}>NT${fmt(a.value_twd)}</div>
+                {renderAllocation(a)}
+              </div>
+              <Btn onClick={()=>openEdit(a)} outline small>編輯</Btn>
+              <Btn onClick={()=>del(a.id)} color={C.red} outline small>刪除</Btn>
             </div>
           </div>
         </Card>
       ))}
 
-      {modal && (
-        <Modal title={modal === "add" ? "新增項目" : "編輯項目"} onClose={() => setModal(null)}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-            <Sel label="類型" value={form.type} onChange={set("type")} options={["etf", "cash"]} />
-            <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. 006208" />
-            {form.type === "etf" && <>
-              <Inp label="股票代號" value={form.ticker} onChange={v => { set("ticker")(v); set("leverage_ratio")(String(LEVERAGE_MAP[v.toUpperCase()] || 1)); }} placeholder="e.g. 006208" />
-              <Inp label="股數" type="number" value={form.shares} onChange={v => handleChange("shares", v)} placeholder="0" />
-              <Inp label="現價 (NT$)" type="number" value={form.price} onChange={v => handleChange("price", v)} placeholder="0" />
-              <Inp label="成本價 (NT$)" type="number" value={form.cost} onChange={set("cost")} placeholder="0" />
-              <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50" />
-              <Inp label="槓桿倍數" type="number" value={form.leverage_ratio} onChange={set("leverage_ratio")} placeholder="1" />
+      {modal&&(
+        <Modal title={modal==="add"?"新增項目":"編輯項目"} onClose={()=>setModal(null)}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <Sel label="類型" value={form.type} onChange={set("type")} options={["etf","cash"]}/>
+            <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. 006208"/>
+            {form.type==="etf"&&<>
+              <Inp label="股票代號" value={form.ticker} onChange={v=>{set("ticker")(v); set("leverage_ratio")(String(LEVERAGE_MAP[v.toUpperCase()]||1));}} placeholder="e.g. 006208"/>
+              <Inp label="股數" type="number" value={form.shares} onChange={v=>handleChange("shares",v)} placeholder="0"/>
+              <Inp label="現價 (NT$)" type="number" value={form.price} onChange={v=>handleChange("price",v)} placeholder="0"/>
+              <Inp label="成本價 (NT$)" type="number" value={form.cost} onChange={set("cost")} placeholder="0"/>
+              <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50"/>
+              <Inp label="槓桿倍數" type="number" value={form.leverage_ratio} onChange={set("leverage_ratio")} placeholder="1"/>
             </>}
-            <Inp label="市值 (NT$)" type="number" value={form.value_twd} onChange={set("value_twd")} placeholder="0" />
-            <Inp label="備註" value={form.note} onChange={set("note")} placeholder="選填" />
+            {form.type==="cash"&&<>
+              <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50"/>
+            </>}
+            <Inp label="市值 (NT$)" type="number" value={form.value_twd} onChange={set("value_twd")} placeholder="0"/>
+            <Inp label="備註" value={form.note} onChange={set("note")} placeholder="選填"/>
           </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <Btn onClick={() => setModal(null)} outline>取消</Btn>
-            <Btn onClick={save}>{saving ? "儲存中..." : "確認儲存"}</Btn>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <Btn onClick={()=>setModal(null)} outline>取消</Btn>
+            <Btn onClick={save}>{saving?"儲存中...":"確認儲存"}</Btn>
           </div>
         </Modal>
       )}
@@ -460,179 +480,201 @@ function TWAccount({ assets, reload }) {
 // ══════════════════════════════════════════════════════════
 // 美股帳戶
 // ══════════════════════════════════════════════════════════
-const emptyUS = { type: "etf", name: "", ticker: "", shares: "", price_usd: "", cost: "", value_usd: "", target: "", leverage_ratio: "1", note: "" };
+const emptyUS = {type:"etf",name:"",ticker:"",shares:"",price_usd:"",cost:"",value_usd:"",target:"",leverage_ratio:"1",note:""};
 
-function USAccount({ assets, usdRate, reload }) {
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState(emptyUS);
-  const [saving, setSaving] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  const [fetchMsg, setFetchMsg] = useState("");
-  const set = k => v => setForm(p => ({ ...p, [k]: v }));
+function USAccount({assets,usdRate,reload}) {
+  const [modal,setModal] = useState(null);
+  const [form,setForm] = useState(emptyUS);
+  const [saving,setSaving] = useState(false);
+  const [fetching,setFetching] = useState(false);
+  const [fetchMsg,setFetchMsg] = useState("");
+  const set = k => v => setForm(p=>({...p,[k]:v}));
 
-  const handleChange = (k, v) => {
-    const next = { ...form, [k]: v };
-    const shares = parseFloat(k === "shares" ? v : next.shares) || 0;
-    const price = parseFloat(k === "price_usd" ? v : next.price_usd) || 0;
-    if (shares > 0 && price > 0) next.value_usd = String((shares * price).toFixed(2));
+  const handleChange = (k,v) => {
+    const next = {...form,[k]:v};
+    const shares = parseFloat(k==="shares"?v:next.shares)||0;
+    const price = parseFloat(k==="price_usd"?v:next.price_usd)||0;
+    if(shares>0&&price>0) next.value_usd = String((shares*price).toFixed(2));
     setForm(next);
   };
 
   const openAdd = () => { setForm(emptyUS); setModal("add"); };
   const openEdit = a => {
     setForm({
-      type: a.type || "etf", name: a.name, ticker: a.ticker || "",
-      shares: String(a.shares || ""), price_usd: String(a.price_usd || ""),
-      cost: String(a.cost || ""), value_usd: String(a.value_usd || ""),
-      target: String(a.target > 0 ? a.target * 100 : ""),
-      leverage_ratio: String(a.leverage_ratio || 1),
-      note: a.note || ""
+      type:a.type||"etf", name:a.name, ticker:a.ticker||"",
+      shares:String(a.shares||""), price_usd:String(a.price_usd||""),
+      cost:String(a.cost||""), value_usd:String(a.value_usd||""),
+      target:String(a.target>0?a.target*100:""),
+      leverage_ratio:String(a.leverage_ratio||1),
+      note:a.note||""
     });
     setModal(a);
   };
 
   const save = async () => {
     setSaving(true);
-    const shares = parseFloat(form.shares) || 0;
-    const cost = parseFloat(form.cost) || 0;
-    const value_usd = parseFloat(form.value_usd) || 0;
+    const shares = parseFloat(form.shares)||0;
+    const cost = parseFloat(form.cost)||0;
+    const value_usd = parseFloat(form.value_usd)||0;
     const data = {
-      account: "us", type: form.type, name: form.name, ticker: form.ticker,
-      shares, price_usd: parseFloat(form.price_usd) || 0,
-      cost, cost_total: cost * shares * usdRate,
-      value_usd, value_twd: value_usd * usdRate,
-      target: (parseFloat(form.target) || 0) / 100,
-      leverage_ratio: parseFloat(form.leverage_ratio) || 1,
-      note: form.note,
+      account:"us", type:form.type, name:form.name, ticker:form.ticker,
+      shares, price_usd:parseFloat(form.price_usd)||0,
+      cost, cost_total:cost*shares*usdRate,
+      value_usd, value_twd:value_usd*usdRate,
+      target:(parseFloat(form.target)||0)/100,
+      leverage_ratio:parseFloat(form.leverage_ratio)||1,
+      note:form.note,
     };
-    if (modal === "add") await supabase.from("assets").insert(data);
-    else await supabase.from("assets").update(data).eq("id", modal.id);
+    if(modal==="add") await supabase.from("assets").insert(data);
+    else await supabase.from("assets").update(data).eq("id",modal.id);
     setSaving(false); setModal(null); reload();
   };
 
   const del = async id => {
-    if (!window.confirm("確定刪除？")) return;
-    await supabase.from("assets").delete().eq("id", id);
+    if(!window.confirm("確定刪除？")) return;
+    await supabase.from("assets").delete().eq("id",id);
     reload();
   };
 
   const refreshPrices = async () => {
     setFetching(true); setFetchMsg("抓取股價中...");
-    const etfs = assets.filter(a => a.ticker && a.type === "etf");
-    for (const a of etfs) {
+    const etfs = assets.filter(a=>a.ticker&&a.type==="etf");
+    for(const a of etfs) {
       const price = await fetchUSPrice(a.ticker);
-      if (price) {
-        const value_usd = price * (a.shares || 0);
-        const value_twd = value_usd * usdRate;
-        await supabase.from("assets").update({ price_usd: price, value_usd, value_twd }).eq("id", a.id);
+      if(price) {
+        const value_usd = price*(a.shares||0);
+        const value_twd = value_usd*usdRate;
+        await supabase.from("assets").update({price_usd:price,value_usd,value_twd}).eq("id",a.id);
         setFetchMsg(`✅ ${a.ticker}: $${price.toFixed(2)}`);
       }
     }
     setFetching(false); setFetchMsg("✅ 更新完成");
-    setTimeout(() => setFetchMsg(""), 3000);
+    setTimeout(()=>setFetchMsg(""),3000);
     reload();
   };
 
-  const etfs = assets.filter(a => a.type === "etf");
-  const cash = assets.filter(a => a.type === "cash");
-  const etfTotal = etfs.reduce((s, x) => s + x.value_twd, 0);
-  const cashTotal = cash.reduce((s, x) => s + x.value_twd, 0);
-  const total = etfTotal + cashTotal;
-  const totalUSD = assets.reduce((s, x) => s + (x.value_usd || x.value_twd / usdRate), 0);
+  const etfs = assets.filter(a=>a.type==="etf");
+  const cash = assets.filter(a=>a.type==="cash");
+  const total = assets.reduce((s,x)=>s+(x.value_twd||0),0);
+  const totalUSD = assets.reduce((s,x)=>s+(x.value_usd||x.value_twd/usdRate),0);
 
   const renderPnl = a => {
-    const ct = a.cost_total || (a.cost || 0) * (a.shares || 0) * usdRate;
-    if (!ct) return null;
-    const pnl = a.value_twd - ct;
-    const pp = pnl / ct * 100;
-    return <div style={{ fontSize: 11, color: pnl >= 0 ? C.accent : C.red }}>{pnl >= 0 ? "+" : ""}{fmt(pnl)} ({pp >= 0 ? "+" : ""}{pp.toFixed(1)}%)</div>;
+    const ct = a.cost_total||(a.cost||0)*(a.shares||0)*usdRate;
+    if(!ct) return null;
+    const pnl = a.value_twd-ct;
+    const pp = pnl/ct*100;
+    return <div style={{fontSize:11,color:pnl>=0?C.accent:C.red}}>{pnl>=0?"+":""}{fmt(pnl)} ({pp>=0?"+":""}{pp.toFixed(1)}%)</div>;
+  };
+
+  const renderAllocation = a => {
+    if(!total) return null;
+    const actual = a.value_twd/total*100;
+    const target = (a.target||0)*100;
+    if(!target) return <div style={{color:C.textMuted,fontSize:10}}>{actual.toFixed(1)}%</div>;
+    const diff = actual - target;
+    const diffAmt = a.value_twd - (target/100*total);
+    return (
+      <div style={{fontSize:10,textAlign:"right"}}>
+        <div style={{color:C.textMuted}}>實際 {actual.toFixed(1)}% ｜ 目標 {target.toFixed(1)}%</div>
+        <div style={{color:diff>0?C.red:C.accent}}>
+          {diff>0?"▲":"▼"} {Math.abs(diff).toFixed(1)}% （{diff>0?"賣出":"買入"} NT${fmt(Math.abs(diffAmt))}）
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-        <KPI label="美股總值(TWD)" value={total} color={C.blue} />
-        <KPI label="美股總值(USD)" value={totalUSD.toFixed(0)} prefix="$" color={C.blue} />
-        <KPI label="匯率 USD/TWD" value={usdRate.toFixed(2)} prefix="" color={C.textMuted} />
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+        <KPI label="美股總值(TWD)" value={total} color={C.blue}/>
+        <KPI label="美股總值(USD)" value={totalUSD.toFixed(0)} prefix="$" color={C.blue}/>
+        <KPI label="匯率 USD/TWD" value={usdRate.toFixed(2)} prefix="" color={C.textMuted}/>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>ETF / 股票</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {fetchMsg && <span style={{ color: C.accent, fontSize: 12, alignSelf: "center" }}>{fetchMsg}</span>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontWeight:600,fontSize:14}}>ETF / 股票</div>
+        <div style={{display:"flex",gap:8}}>
+          {fetchMsg&&<span style={{color:C.accent,fontSize:12,alignSelf:"center"}}>{fetchMsg}</span>}
           <Btn onClick={refreshPrices} color={C.blue} outline disabled={fetching}>🔄 更新股價</Btn>
           <Btn onClick={openAdd}>+ 新增</Btn>
         </div>
       </div>
 
-      {etfs.map(a => (
-        <Card key={a.id} style={{ padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {etfs.map(a=>(
+        <Card key={a.id} style={{padding:"12px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{a.name}</span>
-                {a.ticker && <Badge text={a.ticker} color={C.blue} />}
-                {(a.leverage_ratio || 1) > 1 && <Badge text={`${a.leverage_ratio}x槓桿`} color={C.orange} />}
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:3}}>
+                <span style={{fontWeight:600,fontSize:14}}>{a.name}</span>
+                {a.ticker&&<Badge text={a.ticker} color={C.blue}/>}
+                {(a.leverage_ratio||1)>1&&<Badge text={`${a.leverage_ratio}x槓桿`} color={C.orange}/>}
               </div>
-              <div style={{ color: C.textMuted, fontSize: 11 }}>
-                {a.shares > 0 && `${a.shares} 股`}
-                {a.price_usd > 0 && ` × $${a.price_usd}`}
-                {a.cost > 0 && ` ｜ 成本 $${a.cost}`}
+              <div style={{color:C.textMuted,fontSize:11}}>
+                {a.shares>0&&`${a.shares} 股`}
+                {a.price_usd>0&&` × $${a.price_usd}`}
+                {a.cost>0&&` ｜ 成本 $${a.cost}`}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ color: C.blue, fontFamily: "monospace", fontWeight: 700, fontSize: 14 }}>NT${fmt(a.value_twd)}</div>
-                <div style={{ color: C.textMuted, fontSize: 11 }}>${(a.value_usd || 0).toFixed(2)}</div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:C.blue,fontFamily:"monospace",fontWeight:700,fontSize:14}}>NT${fmt(a.value_twd)}</div>
+                <div style={{color:C.textMuted,fontSize:11}}>${(a.value_usd||0).toFixed(2)}</div>
                 {renderPnl(a)}
+                {renderAllocation(a)}
               </div>
-              <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
-              <Btn onClick={() => del(a.id)} color={C.red} outline small>刪除</Btn>
+              <Btn onClick={()=>openEdit(a)} outline small>編輯</Btn>
+              <Btn onClick={()=>del(a.id)} color={C.red} outline small>刪除</Btn>
             </div>
           </div>
         </Card>
       ))}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>美金現金</div>
-        <Btn onClick={() => { setForm({ ...emptyUS, type: "cash" }); setModal("add"); }}>+ 新增</Btn>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
+        <div style={{fontWeight:600,fontSize:14}}>美金現金</div>
+        <Btn onClick={()=>{setForm({...emptyUS,type:"cash"});setModal("add");}}>+ 新增</Btn>
       </div>
 
-      {cash.map(a => (
-        <Card key={a.id} style={{ padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {cash.map(a=>(
+        <Card key={a.id} style={{padding:"12px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 3 }}>{a.name}</div>
-              <div style={{ color: C.textMuted, fontSize: 11 }}>${(a.value_usd || 0).toFixed(2)} USD</div>
+              <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>{a.name}</div>
+              <div style={{color:C.textMuted,fontSize:11}}>${(a.value_usd||0).toFixed(2)} USD</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ color: C.purple, fontFamily: "monospace", fontWeight: 700, fontSize: 14 }}>NT${fmt(a.value_twd)}</div>
-              <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
-              <Btn onClick={() => del(a.id)} color={C.red} outline small>刪除</Btn>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:C.purple,fontFamily:"monospace",fontWeight:700,fontSize:14}}>NT${fmt(a.value_twd)}</div>
+                {renderAllocation(a)}
+              </div>
+              <Btn onClick={()=>openEdit(a)} outline small>編輯</Btn>
+              <Btn onClick={()=>del(a.id)} color={C.red} outline small>刪除</Btn>
             </div>
           </div>
         </Card>
       ))}
 
-      {modal && (
-        <Modal title={modal === "add" ? "新增項目" : "編輯項目"} onClose={() => setModal(null)}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-            <Sel label="類型" value={form.type} onChange={set("type")} options={["etf", "cash"]} />
-            <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. VT" />
-            {form.type === "etf" && <>
-              <Inp label="股票代號" value={form.ticker} onChange={v => { set("ticker")(v); set("leverage_ratio")(String(LEVERAGE_MAP[v.toUpperCase()] || 1)); }} placeholder="e.g. VT" />
-              <Inp label="股數" type="number" value={form.shares} onChange={v => handleChange("shares", v)} placeholder="0" />
-              <Inp label="現價 (USD)" type="number" value={form.price_usd} onChange={v => handleChange("price_usd", v)} placeholder="0" />
-              <Inp label="成本價 (USD)" type="number" value={form.cost} onChange={set("cost")} placeholder="0" />
-              <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50" />
-              <Inp label="槓桿倍數" type="number" value={form.leverage_ratio} onChange={set("leverage_ratio")} placeholder="1" />
+      {modal&&(
+        <Modal title={modal==="add"?"新增項目":"編輯項目"} onClose={()=>setModal(null)}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <Sel label="類型" value={form.type} onChange={set("type")} options={["etf","cash"]}/>
+            <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. VT"/>
+            {form.type==="etf"&&<>
+              <Inp label="股票代號" value={form.ticker} onChange={v=>{set("ticker")(v); set("leverage_ratio")(String(LEVERAGE_MAP[v.toUpperCase()]||1));}} placeholder="e.g. VT"/>
+              <Inp label="股數" type="number" value={form.shares} onChange={v=>handleChange("shares",v)} placeholder="0"/>
+              <Inp label="現價 (USD)" type="number" value={form.price_usd} onChange={v=>handleChange("price_usd",v)} placeholder="0"/>
+              <Inp label="成本價 (USD)" type="number" value={form.cost} onChange={set("cost")} placeholder="0"/>
+              <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50"/>
+              <Inp label="槓桿倍數" type="number" value={form.leverage_ratio} onChange={set("leverage_ratio")} placeholder="1"/>
             </>}
-            <Inp label="金額 (USD)" type="number" value={form.value_usd} onChange={set("value_usd")} placeholder="0" />
-            <Inp label="備註" value={form.note} onChange={set("note")} placeholder="選填" />
+            {form.type==="cash"&&<>
+              <Inp label="目標佔比 (%)" type="number" value={form.target} onChange={set("target")} placeholder="e.g. 50"/>
+            </>}
+            <Inp label="金額 (USD)" type="number" value={form.value_usd} onChange={set("value_usd")} placeholder="0"/>
+            <Inp label="備註" value={form.note} onChange={set("note")} placeholder="選填"/>
           </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <Btn onClick={() => setModal(null)} outline>取消</Btn>
-            <Btn onClick={save}>{saving ? "儲存中..." : "確認儲存"}</Btn>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <Btn onClick={()=>setModal(null)} outline>取消</Btn>
+            <Btn onClick={save}>{saving?"儲存中...":"確認儲存"}</Btn>
           </div>
         </Modal>
       )}
