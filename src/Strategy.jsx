@@ -34,20 +34,14 @@ async function fetchTWKline(ticker) {
 
 async function fetchUSKline(ticker) {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=90d`;
+    const end = new Date().toISOString().slice(0,10);
+    const start = new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+    const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
     const res = await fetch(url);
     const json = await res.json();
-    const result = json.chart?.result?.[0];
-    if (!result) return [];
-    const timestamps = result.timestamp;
-    const quotes = result.indicators.quote[0];
-    return timestamps.map((t, i) => ({
-      date: new Date(t*1000).toISOString().slice(0,10),
-      open: quotes.open[i],
-      high: quotes.high[i],
-      low: quotes.low[i],
-      close: quotes.close[i],
-    })).filter(d => d.close != null);
+    return (json.data||[]).map(d=>({
+      date: d.date, open: d.open, high: d.max, low: d.min, close: d.close
+    }));
   } catch { return []; }
 }
 

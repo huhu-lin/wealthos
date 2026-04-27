@@ -44,12 +44,13 @@ async function fetchTWPrice(stockId) {
 
 async function fetchUSPrice(ticker) {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`;
+    const end = new Date().toISOString().slice(0,10);
+    const start = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+    const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
     const res = await fetch(url);
     const json = await res.json();
-    const closes = json.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
-    if (closes?.length > 0) return closes.filter(Boolean).pop();
-  } catch { }
+    if(json.data?.length>0) return json.data[json.data.length-1].close;
+  } catch {}
   return null;
 }
 
