@@ -24,7 +24,7 @@ function Badge({text, color=C.accent}) {
 async function fetchTWKline(ticker) {
   try {
     const end = new Date().toISOString().slice(0,10);
-    const start = new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+    const start = new Date(Date.now()-180*86400000).toISOString().slice(0,10);
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
     const res = await fetch(url);
     const json = await res.json();
@@ -35,7 +35,7 @@ async function fetchTWKline(ticker) {
 async function fetchUSKline(ticker) {
   try {
     const end = new Date().toISOString().slice(0,10);
-    const start = new Date(Date.now()-90*86400000).toISOString().slice(0,10);
+    const start = new Date(Date.now()-180*86400000).toISOString().slice(0,10);
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
     const res = await fetch(url);
     const json = await res.json();
