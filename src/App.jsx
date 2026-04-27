@@ -14,7 +14,11 @@ const C = {
   blue:"#4D9EFF", blueDim:"#4D9EFF18", purple:"#9B6DFF", orange:"#FF8C42",
   text:"#E2EAF4", textMuted:"#5A7399",
 };
-
+// ── 槓桿 ─────────────────────────────────────────────────
+const LEVERAGE_MAP = {
+  "00675L": 2, "00631L": 2, "00633L": 2, "00685L": 2,
+  "QLD": 2, "TQQQ": 3, "SOXL": 3, "UPRO": 3, "SPXL": 3, "TECL": 3, "SSO": 2, "UDOW": 3,
+};
 // ── API Token ─────────────────────────────────────────────
 const FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiaHVodSIsImVtYWlsIjoiZXIwMDU2Nzg5MEBnbWFpbC5jb20ifQ.QJ3r5o23EqtdPJM_elCOMwjPKg4ivYyaGQNvYadejvs";
 
@@ -427,7 +431,7 @@ function TWAccount({assets,reload}) {
             <Sel label="類型" value={form.type} onChange={set("type")} options={["etf","cash"]}/>
             <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. 006208"/>
             {form.type==="etf"&&<>
-              <Inp label="股票代號" value={form.ticker} onChange={set("ticker")} placeholder="e.g. 006208"/>
+              <Inp label="股票代號" value={form.ticker} onChange={v=>{set("ticker")(v); set("leverage_ratio")(String(LEVERAGE_MAP[v.toUpperCase()]||1));}} placeholder="e.g. 006208"/>
               <Inp label="股數" type="number" value={form.shares} onChange={v=>handleChange("shares",v)} placeholder="0"/>
               <Inp label="現價 (NT$)" type="number" value={form.price} onChange={v=>handleChange("price",v)} placeholder="0"/>
               <Inp label="成本價 (NT$)" type="number" value={form.cost} onChange={set("cost")} placeholder="0"/>
@@ -610,7 +614,7 @@ function USAccount({assets,usdRate,reload}) {
             <Sel label="類型" value={form.type} onChange={set("type")} options={["etf","cash"]}/>
             <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. VT"/>
             {form.type==="etf"&&<>
-              <Inp label="股票代號" value={form.ticker} onChange={set("ticker")} placeholder="e.g. VT"/>
+              <Inp label="股票代號" value={form.ticker} onChange={v=>{set("ticker")(v); set("leverage_ratio")(String(LEVERAGE_MAP[v.toUpperCase()]||1));}} placeholder="e.g. VT"/>
               <Inp label="股數" type="number" value={form.shares} onChange={v=>handleChange("shares",v)} placeholder="0"/>
               <Inp label="現價 (USD)" type="number" value={form.price_usd} onChange={v=>handleChange("price_usd",v)} placeholder="0"/>
               <Inp label="成本價 (USD)" type="number" value={form.cost} onChange={set("cost")} placeholder="0"/>
