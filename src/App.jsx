@@ -39,12 +39,10 @@ async function fetchTWPrice(stockId) {
 
 async function fetchUSPrice(ticker) {
   try {
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`;
-    const url = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`;
     const res = await fetch(url);
     const json = await res.json();
-    const data = JSON.parse(json.contents);
-    const closes = data.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+    const closes = json.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
     if(closes?.length>0) return closes.filter(Boolean).pop();
   } catch {}
   return null;
@@ -62,12 +60,10 @@ async function fetchCryptoPrice(coinId) {
 
 async function fetchUSDTWD() {
   try {
-    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/USDTWD=X?interval=1d&range=5d`;
-    const url = `https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/USDTWD=X?interval=1d&range=5d`;
     const res = await fetch(url);
     const json = await res.json();
-    const data = JSON.parse(json.contents);
-    const closes = data.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+    const closes = json.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
     if(closes?.length>0) return closes.filter(Boolean).pop();
   } catch {}
   return 31.5;
@@ -919,28 +915,52 @@ function Liabilities({liabilities,reload}) {
 // ══════════════════════════════════════════════════════════
 // 質押專頁
 // ══════════════════════════════════════════════════════════
-const emptyPledge = {name:"",market_value:"",borrow_amount:"",warning_ratio:"160"};
+const emptyPledge = {name:"",ticker:"",shares:"",borrow_amount:"",warning_ratio:"160",note:""};
 
 function Pledge({pledges,reload}) {
   const [modal,setModal] = useState(null);
   const [form,setForm] = useState(emptyPledge);
   const [saving,setSaving] = useState(false);
+  const [fetching,setFetching] = useState(false);
+  const [fetchMsg,setFetchMsg] = useState("");
   const set = k => v => setForm(p=>({...p,[k]:v}));
 
   const openAdd = () => { setForm(emptyPledge); setModal("add"); };
   const openEdit = p => {
-    setForm({name:p.name,market_value:String(p.market_value||""),borrow_amount:String(p.borrow_amount||""),warning_ratio:String(p.warning_ratio||160)});
+    setForm({
+      name:p.name, ticker:p.ticker||"",
+      shares:String(p.shares||""),
+      borrow_amount:String(p.borrow_amount||""),
+      warning_ratio:String(p.warning_ratio||160),
+      note:p.note||""
+    });
     setModal(p);
+  };
+
+  const calcFields = (market_value, borrow_amount, warning_ratio) => {
+    const mv = parseFloat(market_value)||0;
+    const ba = parseFloat(borrow_amount)||0;
+    const wr = parseFloat(warning_ratio)||160;
+    const maintenance_ratio = ba>0 ? mv/ba*100 : 0;
+    const max_drop = ba>0 ? (1-(ba*(wr/100)/mv))*100 : 0;
+    const max_borrow = mv*0.6;
+    const unused_quota = max_borrow - ba;
+    return {maintenance_ratio, max_drop, max_borrow, unused_quota};
   };
 
   const save = async () => {
     setSaving(true);
-    const market_value = parseFloat(form.market_value)||0;
+    const shares = parseFloat(form.shares)||0;
+    const price = parseFloat(form.price)||0;
+    const market_value = shares * price;
     const borrow_amount = parseFloat(form.borrow_amount)||0;
     const warning_ratio = parseFloat(form.warning_ratio)||160;
-    const maintenance_ratio = borrow_amount>0 ? (market_value/borrow_amount*100) : 0;
-    const max_drop = borrow_amount>0 ? (1-(borrow_amount*(warning_ratio/100)/market_value)) : 0;
-    const data = {name:form.name,market_value,borrow_amount,warning_ratio,maintenance_ratio,max_drop};
+    const {maintenance_ratio, max_drop, max_borrow, unused_quota} = calcFields(market_value, borrow_amount, warning_ratio);
+    const data = {
+      name:form.name, ticker:form.ticker, shares, price,
+      market_value, borrow_amount, warning_ratio,
+      maintenance_ratio, max_drop, note:form.note||""
+    };
     if(modal==="add") await supabase.from("pledges").insert(data);
     else await supabase.from("pledges").update(data).eq("id",modal.id);
     setSaving(false); setModal(null); reload();
@@ -952,92 +972,169 @@ function Pledge({pledges,reload}) {
     reload();
   };
 
+  // 自動抓股價更新質押市值
+  const refreshPrices = async () => {
+    setFetching(true); setFetchMsg("抓取股價中...");
+    for(const p of pledges) {
+      if(!p.ticker) continue;
+      const price = await fetchTWPrice(p.ticker);
+      if(price) {
+        const market_value = price * (p.shares||0);
+        const {maintenance_ratio, max_drop} = calcFields(market_value, p.borrow_amount, p.warning_ratio);
+        await supabase.from("pledges").update({price, market_value, maintenance_ratio, max_drop}).eq("id",p.id);
+        setFetchMsg(`✅ ${p.ticker}: NT$${price}`);
+      }
+    }
+    setFetching(false); setFetchMsg("✅ 更新完成");
+    setTimeout(()=>setFetchMsg(""),3000);
+    reload();
+  };
+
+  // 整戶計算
   const totalMarket = pledges.reduce((s,p)=>s+p.market_value,0);
   const totalBorrow = pledges.reduce((s,p)=>s+p.borrow_amount,0);
+  const totalMaxBorrow = totalMarket * 0.6;
+  const totalUnused = totalMaxBorrow - totalBorrow;
   const overallRatio = totalBorrow>0 ? totalMarket/totalBorrow*100 : 0;
   const overallMaxDrop = totalBorrow>0 ? (1-(totalBorrow*1.6/totalMarket))*100 : 0;
-
-  const ratioColor = r => r>=250?C.accent:r>=160?C.gold:C.red;
+  const ratioColor = r => r>=250?C.accent:r>=200?C.gold:C.red;
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <Card style={{padding:18,borderColor:overallRatio<200?C.red:overallRatio<250?C.gold:C.border}}>
-        <div style={{fontWeight:600,fontSize:14,marginBottom:14}}>整戶質押狀況</div>
+      {/* 整戶狀況 */}
+      <Card style={{padding:18,borderColor:overallRatio>0&&overallRatio<200?C.red:overallRatio<250?C.gold:C.border}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{fontWeight:600,fontSize:14}}>整戶質押狀況</div>
+          <div style={{display:"flex",gap:8}}>
+            {fetchMsg&&<span style={{color:C.accent,fontSize:12,alignSelf:"center"}}>{fetchMsg}</span>}
+            <Btn onClick={refreshPrices} color={C.blue} outline disabled={fetching}>🔄 更新股價</Btn>
+            <Btn onClick={openAdd}>+ 新增質押</Btn>
+          </div>
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
-          <KPI label="總市值" value={totalMarket} color={C.blue}/>
-          <KPI label="總借款" value={totalBorrow} color={C.red}/>
-          <KPI label="整戶維持率" value={overallRatio.toFixed(1)+"%"} prefix="" color={ratioColor(overallRatio)}/>
-          <KPI label="可承受跌幅" value={overallMaxDrop.toFixed(1)+"%"} prefix="" color={overallMaxDrop>30?C.accent:C.red}/>
+          {[
+            ["總質押市值","NT$"+fmt(totalMarket),C.blue],
+            ["總借款","NT$"+fmt(totalBorrow),C.red],
+            ["整戶維持率",overallRatio>0?overallRatio.toFixed(1)+"%":"-",ratioColor(overallRatio)],
+            ["整戶可承受跌幅",overallMaxDrop>0?overallMaxDrop.toFixed(1)+"%":"-",overallMaxDrop>20?C.accent:C.red],
+            ["最高可借(六成)","NT$"+fmt(totalMaxBorrow),C.gold],
+            ["尚可借出","NT$"+fmt(Math.max(totalUnused,0)),totalUnused>0?C.accent:C.red],
+          ].map(([l,v,c])=>(
+            <div key={l} style={{background:C.surface2,borderRadius:8,padding:"10px 12px",border:`1px solid ${C.border}`}}>
+              <div style={{color:C.textMuted,fontSize:10,marginBottom:4}}>{l}</div>
+              <div style={{color:c,fontWeight:700,fontSize:14,fontFamily:"monospace"}}>{v}</div>
+            </div>
+          ))}
         </div>
         {overallRatio>0&&overallRatio<200&&(
-          <div style={{marginTop:12,padding:"10px 14px",background:C.redDim,border:`1px solid ${C.red}40`,borderRadius:8,color:C.red,fontSize:12}}>
-            ⚠️ 整戶維持率低於 200%，請注意補繳或還款！
+          <div style={{marginTop:12,padding:"9px 12px",background:C.redDim,border:`1px solid ${C.red}40`,borderRadius:8,color:C.red,fontSize:12}}>
+            ⚠️ 整戶維持率 {overallRatio.toFixed(1)}% 低於 200%，請注意！
           </div>
         )}
       </Card>
 
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div style={{fontWeight:600,fontSize:15}}>質押明細</div>
-        <Btn onClick={openAdd}>+ 新增質押</Btn>
-      </div>
+      {/* 單筆明細 */}
+      {pledges.length===0&&(
+        <Card style={{padding:24,textAlign:"center"}}><div style={{color:C.textMuted}}>尚無質押記錄</div></Card>
+      )}
 
-      {pledges.length===0&&<Card style={{padding:24,textAlign:"center"}}><div style={{color:C.textMuted}}>尚無質押記錄</div></Card>}
-
-      {pledges.map(p=>{
-        const ratio = p.borrow_amount>0?p.market_value/p.borrow_amount*100:0;
-        const maxDrop = p.borrow_amount>0?(1-(p.borrow_amount*(p.warning_ratio/100)/p.market_value))*100:0;
-        const unusedQuota = p.market_value*0.6-p.borrow_amount;
-        const isWarning = ratio<p.warning_ratio*1.1;
+      {/* 依股票代號分組顯示 */}
+      {Object.entries(
+        pledges.reduce((acc,p)=>{
+          const key = p.ticker||p.name;
+          if(!acc[key]) acc[key]=[];
+          acc[key].push(p);
+          return acc;
+        },{})
+      ).map(([ticker,items])=>{
+        const groupMarket = items.reduce((s,p)=>s+p.market_value,0);
+        const groupBorrow = items.reduce((s,p)=>s+p.borrow_amount,0);
+        const groupRatio = groupBorrow>0?groupMarket/groupBorrow*100:0;
         return (
-          <Card key={p.id} style={{padding:"14px 16px",borderColor:isWarning?C.red:C.border}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-              <div style={{fontWeight:600,fontSize:14}}>{p.name}</div>
-              <div style={{display:"flex",gap:8}}>
-                <Btn onClick={()=>openEdit(p)} outline small>編輯</Btn>
-                <Btn onClick={()=>del(p.id)} color={C.red} outline small>刪除</Btn>
+          <Card key={ticker} style={{padding:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontWeight:700,fontSize:15}}>{ticker}</span>
+                <Badge text={`${items.reduce((s,p)=>s+(p.shares||0),0).toLocaleString()} 股`} color={C.blue}/>
+                {items[0]?.price>0&&<span style={{color:C.textMuted,fontSize:12}}>@ NT${items[0].price}</span>}
+              </div>
+              <div style={{color:C.textMuted,fontSize:12}}>
+                合計市值 <span style={{color:C.blue,fontWeight:600}}>NT${fmt(groupMarket)}</span> ｜
+                合計借款 <span style={{color:C.red,fontWeight:600}}>NT${fmt(groupBorrow)}</span>
               </div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
-              {[
-                ["市值",`NT$${fmtM(p.market_value)}`,C.blue],
-                ["借款",`NT$${fmtM(p.borrow_amount)}`,C.red],
-                ["維持率",`${ratio.toFixed(1)}%`,ratioColor(ratio)],
-                ["可承受跌幅",`${maxDrop.toFixed(1)}%`,maxDrop>20?C.accent:C.red],
-                ["尚可借",`NT$${fmtM(Math.max(unusedQuota,0))}`,C.gold],
-                ["警戒線",`${p.warning_ratio}%`,C.textMuted],
-              ].map(([l,v,c])=>(
-                <div key={l} style={{background:C.surface2,borderRadius:8,padding:"8px 10px"}}>
-                  <div style={{color:C.textMuted,fontSize:10,marginBottom:3}}>{l}</div>
-                  <div style={{color:c,fontWeight:700,fontSize:13,fontFamily:"monospace"}}>{v}</div>
+
+            {items.map((p,idx)=>{
+              const ratio = p.borrow_amount>0?p.market_value/p.borrow_amount*100:0;
+              const maxDrop = p.borrow_amount>0?(1-(p.borrow_amount*(p.warning_ratio/100)/p.market_value))*100:0;
+              const maxBorrow = p.market_value*0.6;
+              const unusedQuota = maxBorrow - p.borrow_amount;
+              const isWarning = ratio>0&&ratio<p.warning_ratio*1.1;
+              return (
+                <div key={p.id} style={{
+                  background:C.surface2, borderRadius:10, padding:"12px 14px",
+                  border:`1px solid ${isWarning?C.red:C.border}`, marginBottom:8
+                }}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <div style={{fontWeight:600,fontSize:13}}>
+                      第 {idx+1} 筆 ｜ {p.shares} 股質押
+                      {p.note&&<span style={{color:C.textMuted,fontSize:11,marginLeft:8}}>{p.note}</span>}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <Btn onClick={()=>openEdit(p)} outline small>編輯</Btn>
+                      <Btn onClick={()=>del(p.id)} color={C.red} outline small>刪除</Btn>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:8}}>
+                    {[
+                      ["市值","NT$"+fmt(p.market_value),C.blue],
+                      ["借款","NT$"+fmt(p.borrow_amount),C.red],
+                      ["維持率",ratio>0?ratio.toFixed(1)+"%":"-",ratioColor(ratio)],
+                      ["可承受跌幅",maxDrop>0?maxDrop.toFixed(1)+"%":"-",maxDrop>20?C.accent:C.red],
+                      ["最高可借","NT$"+fmt(maxBorrow),C.gold],
+                      ["尚可借","NT$"+fmt(Math.max(unusedQuota,0)),unusedQuota>0?C.accent:C.red],
+                    ].map(([l,v,c])=>(
+                      <div key={l} style={{background:C.bg,borderRadius:6,padding:"6px 8px"}}>
+                        <div style={{color:C.textMuted,fontSize:9,marginBottom:2}}>{l}</div>
+                        <div style={{color:c,fontWeight:700,fontSize:12,fontFamily:"monospace"}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {isWarning&&(
+                    <div style={{marginTop:8,padding:"6px 10px",background:C.redDim,borderRadius:6,color:C.red,fontSize:11}}>
+                      ⚠️ 維持率 {ratio.toFixed(1)}% 接近警戒線 {p.warning_ratio}%！
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-            {isWarning&&(
-              <div style={{marginTop:10,padding:"8px 12px",background:C.redDim,borderRadius:8,color:C.red,fontSize:12}}>
-                ⚠️ 維持率 {ratio.toFixed(1)}% 接近警戒線 {p.warning_ratio}%！
-              </div>
-            )}
+              );
+            })}
           </Card>
         );
       })}
 
+      {/* 新增/編輯 Modal */}
       {modal&&(
         <Modal title={modal==="add"?"新增質押":"編輯質押"} onClose={()=>setModal(null)}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-            <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. 006208 質押"/>
-            <Inp label="質押市值 (NT$)" type="number" value={form.market_value} onChange={set("market_value")} placeholder="0"/>
+            <Inp label="名稱" value={form.name} onChange={set("name")} placeholder="e.g. 006208 第一筆"/>
+            <Inp label="股票代號" value={form.ticker} onChange={set("ticker")} placeholder="e.g. 006208"/>
+            <Inp label="質押股數" type="number" value={form.shares} onChange={v=>{set("shares")(v); setForm(p=>({...p,shares:v,market_value:String((parseFloat(v)||0)*(parseFloat(p.price)||0))}));}} placeholder="e.g. 6000"/>
+            <Inp label="現價 (NT$)" type="number" value={form.price} onChange={v=>setForm(p=>({...p,price:v,market_value:String((parseFloat(v)||0)*(parseFloat(p.shares)||0))}))} placeholder="自動抓取"/>
             <Inp label="已借出 (NT$)" type="number" value={form.borrow_amount} onChange={set("borrow_amount")} placeholder="0"/>
             <Inp label="警戒維持率 (%)" type="number" value={form.warning_ratio} onChange={set("warning_ratio")} placeholder="160"/>
+            <Inp label="備註" value={form.note} onChange={set("note")} placeholder="選填"/>
           </div>
-          {form.market_value&&form.borrow_amount&&(()=>{
-            const mv=parseFloat(form.market_value)||0;
+          {form.shares&&form.borrow_amount&&(()=>{
+            const mv=(parseFloat(form.price)||0)*(parseFloat(form.shares)||0);
             const ba=parseFloat(form.borrow_amount)||0;
             const wr=parseFloat(form.warning_ratio)||160;
-            const ratio=ba>0?mv/ba*100:0;
-            const maxDrop=ba>0?(1-(ba*(wr/100)/mv))*100:0;
+            if(!mv||!ba) return null;
+            const ratio=mv/ba*100;
+            const maxDrop=(1-(ba*(wr/100)/mv))*100;
+            const maxBorrow=mv*0.6;
             return (
               <div style={{padding:"10px 14px",background:C.accentDim,borderRadius:8,border:`1px solid ${C.accent}30`,marginBottom:12,fontSize:12,color:C.accent}}>
-                維持率：{ratio.toFixed(1)}% ｜ 可承受跌幅：{maxDrop.toFixed(1)}%
+                市值 NT${fmt(mv)} ｜ 維持率 {ratio.toFixed(1)}% ｜ 可承受跌幅 {maxDrop.toFixed(1)}% ｜ 最高可借 NT${fmt(maxBorrow)}
               </div>
             );
           })()}
@@ -1050,8 +1147,6 @@ function Pledge({pledges,reload}) {
     </div>
   );
 }
-
-// ══════════════════════════════════════════════════════════
 // 主元件
 // ══════════════════════════════════════════════════════════
 export default function App() {
