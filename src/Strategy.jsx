@@ -76,13 +76,13 @@ function checkSignals(closes, bb, kdj) {
   let jAboveFlag = false;
   for (let i = 1; i < closes.length; i++) {
     if (!bb[i] || !kdj[i] || !bb[i-1] || !kdj[i-1]) continue;
-    if (closes[i-1] < bb[i-1].lower && kdj[i-1].j < 20) jBelowFlag = true;
-    if (closes[i-1] > bb[i-1].upper && kdj[i-1].j > 80) jAboveFlag = true;
-    if (jBelowFlag && kdj[i].j > 20) {
+    if (closes[i-1] < bb[i-1].lower && kdj[i-1].j < 10) jBelowFlag = true;
+    if (closes[i-1] > bb[i-1].upper && kdj[i-1].j > 90) jAboveFlag = true;
+    if (jBelowFlag && kdj[i].j > 10) {
       signals.push({ index: i, type: 'BUY' });
       jBelowFlag = false;
     }
-    if (jAboveFlag && kdj[i].j < 80) {
+    if (jAboveFlag && kdj[i].j < 90) {
       signals.push({ index: i, type: 'SELL' });
       jAboveFlag = false;
     }

@@ -46,7 +46,7 @@ function calcKDJ(closes, period=9) {
   return { k, d, j };
 }
 
-function checkSignal(closes, jThresholdEntry=20, jThresholdExit=80) {
+function checkSignal(closes, jThresholdEntry=10, jThresholdExit=90) {
   const bb = calcBB(closes);
   const kdj = calcKDJ(closes);
   if (!bb || !kdj) return null;
