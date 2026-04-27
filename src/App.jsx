@@ -49,7 +49,7 @@ async function fetchUSPrice(ticker) {
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
     const res = await fetch(url);
     const json = await res.json();
-    if(json.data?.length>0) return json.data[json.data.length-1].close;
+    if(json.data?.length>0) return json.data[json.data.length-1].Close;
   } catch {}
   return null;
 }

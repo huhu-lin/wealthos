@@ -40,8 +40,8 @@ async function fetchUSKline(ticker) {
     const res = await fetch(url);
     const json = await res.json();
     return (json.data||[]).map(d=>({
-      date: d.date, open: d.open, high: d.max, low: d.min, close: d.close
-    }));
+  date: d.date, open: d.Open, high: d.High, low: d.Low, close: d.Close
+}));
   } catch { return []; }
 }
 
