@@ -167,10 +167,10 @@ function KChart({ data, ticker, isUS, assets }) {
     jSeries.setData(data.map((d,i) => kdj[i] ? { time: d.date, value: kdj[i].j } : null).filter(Boolean));
 
     // 超買超賣線
-    const ob = kdjChart.addLineSeries({ color: C.red+"80", lineWidth: 1, lineStyle: 2 });
-    const os = kdjChart.addLineSeries({ color: C.accent+"80", lineWidth: 1, lineStyle: 2 });
-    ob.setData(data.map(d => ({ time: d.date, value: 80 })));
-    os.setData(data.map(d => ({ time: d.date, value: 20 })));
+    const ob = kdjChart.addLineSeries({ color: C.red+"90", lineWidth: 1, lineStyle: 2 });
+    const os = kdjChart.addLineSeries({ color: C.accent+"90", lineWidth: 1, lineStyle: 2 });
+    ob.setData(data.map(d => ({ time: d.date, value: 90 })));
+    os.setData(data.map(d => ({ time: d.date, value: 10 })));
 
     // 同步時間軸
     chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
@@ -200,10 +200,10 @@ function KChart({ data, ticker, isUS, assets }) {
   let status = '正常';
   let statusColor = C.textMuted;
   if (lastBB && lastKDJ) {
-    if (lastClose < lastBB.lower && lastKDJ.j < 20) { status = '蓄力中 ⚡'; statusColor = C.accent; }
-    else if (lastClose > lastBB.upper && lastKDJ.j > 80) { status = '過熱中 🔥'; statusColor = C.red; }
-    else if (lastKDJ.j < 20) { status = 'J值低位'; statusColor = C.blue; }
-    else if (lastKDJ.j > 80) { status = 'J值高位'; statusColor = C.gold; }
+    if (lastClose < lastBB.lower && lastKDJ.j < 10) { status = '蓄力中 ⚡'; statusColor = C.accent; }
+    else if (lastClose > lastBB.upper && lastKDJ.j > 90) { status = '過熱中 🔥'; statusColor = C.red; }
+    else if (lastKDJ.j < 10) { status = 'J值低位'; statusColor = C.blue; }
+    else if (lastKDJ.j > 90) { status = 'J值高位'; statusColor = C.gold; }
   }
 
   // 計算佔比
@@ -222,7 +222,7 @@ function KChart({ data, ticker, isUS, assets }) {
           {lastClose>0 && <span style={{color:C.textMuted, fontSize:13}}>{isUS?'$':'NT$'}{lastClose?.toFixed(2)}</span>}
           <Badge text={status} color={statusColor}/>
         </div>
-        {lastKDJ && <span style={{color:C.textMuted, fontSize:12}}>J值 <span style={{color:lastKDJ.j>80?C.red:lastKDJ.j<20?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
+        {lastKDJ && <span style={{color:C.textMuted, fontSize:12}}>J值 <span style={{color:lastKDJ.j>90?C.red:lastKDJ.j<10?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
 
       {targetPct!=null && (
@@ -239,7 +239,7 @@ function KChart({ data, ticker, isUS, assets }) {
 
       <div ref={chartRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
       <div style={{display:"flex", gap:12, padding:"6px 0", fontSize:11}}>
-        {[["K",C.blue],["D",C.gold],["J",C.accent],["超買/超賣",C.red+"80"]].map(([l,c])=>(
+        {[["K",C.blue],["D",C.gold],["J",C.accent],["超買/超賣",C.red+"90"]].map(([l,c])=>(
           <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
             <div style={{width:12, height:2, background:c}}/><span style={{color:C.textMuted}}>{l}</span>
           </div>
