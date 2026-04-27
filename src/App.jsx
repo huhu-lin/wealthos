@@ -957,10 +957,9 @@ function Pledge({pledges,reload}) {
     const warning_ratio = parseFloat(form.warning_ratio)||160;
     const {maintenance_ratio, max_drop, max_borrow, unused_quota} = calcFields(market_value, borrow_amount, warning_ratio);
     const data = {
-      name:form.name, ticker:form.ticker, shares, price,
-      market_value, borrow_amount, warning_ratio,
-      maintenance_ratio, max_drop, note:form.note||""
-    };
+  name:form.name, ticker:form.ticker, shares, price,
+  borrow_amount, warning_ratio, note:form.note||""
+};
     if(modal==="add") await supabase.from("pledges").insert(data);
     else await supabase.from("pledges").update(data).eq("id",modal.id);
     setSaving(false); setModal(null); reload();
