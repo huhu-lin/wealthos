@@ -1,3 +1,4 @@
+import Strategy from "./Strategy";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
 import {
@@ -1242,6 +1243,7 @@ export default function App() {
     { id: "other", label: "其他", icon: "🏠" },
     { id: "liab", label: "負債", icon: "📋" },
     { id: "pledge", label: "質押", icon: "🔒" },
+    {id:"strategy", label:"策略", icon:"📈"},
   ];
 
   if (loading) return (
@@ -1278,6 +1280,7 @@ export default function App() {
         {tab === "other" && <OtherAccount assets={otherAssets} reload={load} />}
         {tab === "liab" && <Liabilities liabilities={liabilities} reload={load} />}
         {tab === "pledge" && <Pledge pledges={pledges} reload={load} />}
+        {tab ==="strategy"&&<Strategy allAssets={allAssets}/>}
       </div>
     </div>
   );
