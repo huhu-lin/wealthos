@@ -411,21 +411,27 @@ function BacktestTab() {
     const kdj = calcKDJ(closes);
     const signals = checkSignals(closes, bb, kdj, params.j_entry, params.j_exit);
 
-    // 模擬再平衡
-    let cash = params.amount * (1 - params.target);
-    let shares = (params.amount * params.target) / closes[0];
-    const equity = [{ date:raw[0].date, value:params.amount }];
+    // 模擬再平衡（Python 移植版）
+      let cash = params.amount * (1 - params.target);
+      let shares = (params.amount * params.target) / closes[0];
+      const equity = [{ date:raw[0].date, value:params.amount }];
 
-    for (let i=1; i<closes.length; i++) {
-      const totalNow = cash + shares * closes[i];
-      const sig = signals.find(s=>s.index===i);
-      if (sig) {
-        const targetVal = totalNow * params.target;
-        shares = targetVal / closes[i];
-        cash = totalNow - targetVal;
+      for (let i=1; i<closes.length; i++) {
+        const totalNow = cash + shares * closes[i];
+        const sig = signals.find(s=>s.index===i);
+        if (sig) {
+          const equityVal = shares * closes[i];
+          const diff = totalNow * params.target - equityVal;
+          if (diff > 0) {
+            shares += diff / closes[i];
+            cash   -= diff;
+          } else {
+            shares -= Math.abs(diff) / closes[i];
+            cash   += Math.abs(diff);
+          }
+        }
+        equity.push({ date:raw[i].date, value:cash + shares*closes[i] });
       }
-      equity.push({ date:raw[i].date, value:cash + shares*closes[i] });
-    }
 
     const finalVal = equity[equity.length-1].value;
     const totalReturn = (finalVal - params.amount) / params.amount * 100;
