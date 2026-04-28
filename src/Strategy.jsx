@@ -390,7 +390,7 @@ function MonitorTab({ allAssets }) {
 // ─── 回測 Tab ────────────────────────────────────────────────
 function BacktestTab() {
   const [params, setParams] = useState({
-    ticker:"QLD", is_us:true, amount:1000000, target:0.5, j_entry:10, j_exit:90, days:720
+    ticker:"QLD", is_us:true, benchmark:"QQQ", amount:1000000, target:0.5, j_entry:10, j_exit:90, days:720
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -399,7 +399,11 @@ function BacktestTab() {
 
   async function runBacktest() {
     setLoading(true); setResult(null);
-    const raw = params.is_us ? await fetchUSKline(params.ticker, params.days) : await fetchTWKline(params.ticker, params.days);
+    const fetchFn = params.is_us ? fetchUSKline : fetchTWKline;
+    const [raw, bmRaw] = await Promise.all([
+      fetchFn(params.ticker, params.days),
+      params.benchmark?.trim() ? fetchFn(params.benchmark, params.days) : Promise.resolve([]),
+    ]);
     if (!raw.length) { setLoading(false); return; }
 
     const closes = raw.map(d=>d.close);
@@ -427,8 +431,9 @@ function BacktestTab() {
     const totalReturn = (finalVal - params.amount) / params.amount * 100;
     const maxDD = calcMaxDrawdown(equity.map(e=>e.value));
     const buyHoldReturn = (closes[closes.length-1] - closes[0]) / closes[0] * 100;
+    const bmReturn = bmRaw.length ? (bmRaw[bmRaw.length-1].close - bmRaw[0].close) / bmRaw[0].close * 100 : null;
 
-    setResult({ equity, finalVal, totalReturn, maxDD, buyHoldReturn, signals, raw });
+    setResult({ equity, finalVal, totalReturn, maxDD, buyHoldReturn, bmReturn, signals, raw, bmRaw });
     setLoading(false);
   }
 
@@ -459,10 +464,12 @@ function BacktestTab() {
     const stratLine = chart.addLineSeries({ color:C.accent, lineWidth:2, title:"策略" });
     stratLine.setData(result.equity.map(e=>({ time:e.date, value:e.value })));
 
-    // 買進持有線
-    const initShares = params.amount / result.raw[0].close;
-    const bhLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:"買進持有" });
-    bhLine.setData(result.raw.map(d=>({ time:d.date, value:initShares*d.close })));
+    // 原型ETF買進持有線
+    if (result.bmRaw?.length) {
+      const bmInitShares = params.amount / result.bmRaw[0].close;
+      const bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
+      bmLine.setData(result.bmRaw.map(d=>({ time:d.date, value:bmInitShares*d.close })));
+    }
 
     chart.timeScale().fitContent();
     return () => { if(chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; } };
@@ -490,8 +497,9 @@ function BacktestTab() {
 
       <Card style={{padding:16, marginBottom:16}}>
         <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14}}>
-          {p("ticker","股票代號","text",{placeholder:"如 QLD / 00675L"})}
+          {p("ticker","槓桿ETF代號","text",{placeholder:"如 QLD / 00675L"})}
           {p("is_us","市場","select")}
+          {p("benchmark","對比原型ETF","text",{placeholder:"如 QQQ / 0050"})}
           {p("amount","初始資金 (NT$)")}
           {p("target","股票佔比（0.5=50%）")}
           {p("j_entry","J值進場閾值")}
@@ -507,7 +515,7 @@ function BacktestTab() {
           <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16}}>
             {[
               ["策略報酬", `${result.totalReturn>=0?"+":""}${result.totalReturn.toFixed(1)}%`, result.totalReturn>=0?C.accent:C.red],
-              ["買進持有", `${result.buyHoldReturn>=0?"+":""}${result.buyHoldReturn.toFixed(1)}%`, result.buyHoldReturn>=0?C.blue:C.red],
+              ["原型ETF報酬", result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-", (result.bmReturn||0)>=0?C.blue:C.red],
               ["最大回撤", `-${result.maxDD.toFixed(1)}%`, C.gold],
               ["訊號次數", `${result.signals.length} 次`, C.textMuted],
             ].map(([label, val, color])=>(
