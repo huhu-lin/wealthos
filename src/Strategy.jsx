@@ -59,7 +59,7 @@ async function fetchTWKline(ticker, days=720) {
 async function fetchUSKline(ticker, days=720) {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=2y`;
-    const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const proxy = `https://corsproxy.io/?${encodeURIComponent(url)}`;
     const res = await fetch(proxy);
     const json = await res.json();
     const quotes = json.chart?.result?.[0];
