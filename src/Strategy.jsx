@@ -1,11 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createChart } from "lightweight-charts";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from "./supabase";
 
 const C = {
   bg:"#080C14", surface:"#0F1623", surface2:"#162030",
