@@ -58,12 +58,20 @@ async function fetchTWKline(ticker, days=720) {
 
 async function fetchUSKline(ticker, days=720) {
   try {
-    const end = new Date().toISOString().slice(0,10);
-    const start = new Date(Date.now()-days*86400000).toISOString().slice(0,10);
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
-    const res = await fetch(url);
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=2y`;
+    const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxy);
     const json = await res.json();
-    return (json.data||[]).map(d=>({date:d.date, open:d.Open, high:d.High, low:d.Low, close:d.Close}));
+    const quotes = json.chart?.result?.[0];
+    const times = quotes?.timestamp || [];
+    const closes = quotes?.indicators?.quote?.[0]?.close || [];
+    const opens = quotes?.indicators?.quote?.[0]?.open || [];
+    const highs = quotes?.indicators?.quote?.[0]?.high || [];
+    const lows = quotes?.indicators?.quote?.[0]?.low || [];
+    return times.map((t, i) => ({
+      date: new Date(t*1000).toISOString().slice(0,10),
+      open: opens[i], high: highs[i], low: lows[i], close: closes[i]
+    })).filter(d => d.close);
   } catch { return []; }
 }
 
