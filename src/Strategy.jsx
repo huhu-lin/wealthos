@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { createChart } from "lightweight-charts";
-import { supabase } from "./supabase";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const C = {
   bg:"#080C14", surface:"#0F1623", surface2:"#162030",
@@ -63,9 +68,7 @@ async function fetchUSKline(ticker, days=720) {
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
     const res = await fetch(url);
     const json = await res.json();
-    return (json.data||[]).map(d=>({
-      date: d.date, open: d.Open, high: d.High, low: d.Low, close: d.Close
-    }));
+    return (json.data||[]).map(d=>({date:d.date, open:d.Open, high:d.High, low:d.Low, close:d.Close}));
   } catch { return []; }
 }
 
@@ -108,7 +111,7 @@ function checkSignals(closes, bb, kdj, jEntry=10, jExit=90) {
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
-function KChart({ data, ticker, isUS, assets, jEntry=10, jExit=90 }) {
+function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -200,12 +203,16 @@ function KChart({ data, ticker, isUS, assets, jEntry=10, jExit=90 }) {
     else if (lastKDJ.j > jExit) { status='J值高位'; statusColor=C.gold; }
   }
 
-  const total = assets.reduce((s,x)=>s+(x.value_twd||0),0);
-  const holding = assets.filter(a=>a.ticker===ticker);
-  const holdingValue = holding.reduce((s,x)=>s+(x.value_twd||0),0);
-  const actualPct = total>0 ? holdingValue/total*100 : 0;
-  const targetPct = holding[0]?.target ? holding[0].target*100 : null;
-  const diffAmt = targetPct!=null ? Math.round((holding[0].target - holdingValue/total)*total) : null;
+  // 只用「這檔股票 + 對應現金」計算比例
+  const cashName = isUS ? 'USD' : '現金';
+  const holdingAsset = assets.find(a => a.name === ticker);
+  const cashAsset = assets.find(a => a.name === cashName);
+  const holdingValue = holdingAsset?.value_twd || 0;
+  const cashValue = cashAsset?.value_twd || 0;
+  const total = holdingValue + cashValue;
+  const actualPct = total > 0 ? holdingValue / total * 100 : 0;
+  const targetPct = target * 100;
+  const diffAmt = Math.round(total * target - holdingValue);
 
   return (
     <Card style={{padding:16, marginBottom:14}}>
@@ -217,7 +224,7 @@ function KChart({ data, ticker, isUS, assets, jEntry=10, jExit=90 }) {
         </div>
         {lastKDJ && <span style={{color:C.textMuted, fontSize:12}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
-      {targetPct!=null && (
+      {total > 0 && (
         <div style={{display:"flex", gap:16, marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}`, fontSize:12}}>
           <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
           <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
@@ -368,6 +375,7 @@ function MonitorTab({ allAssets }) {
             ticker={t.ticker}
             isUS={t.is_us}
             assets={allAssets}
+            target={t.target}
             jEntry={t.j_entry}
             jExit={t.j_exit}
           />
