@@ -63,7 +63,9 @@ async function fetchUSKline(ticker, days=720) {
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
     const res = await fetch(url);
     const json = await res.json();
-    return (json.data||[]).map(d=>({date:d.date, open:d.Open, high:d.High, low:d.Low, close:d.Close}));
+    return (json.data||[]).map(d=>({
+      date: d.date, open: d.Open, high: d.High, low: d.Low, close: d.Close
+    }));
   } catch { return []; }
 }
 
