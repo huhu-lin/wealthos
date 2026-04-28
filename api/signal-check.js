@@ -5,20 +5,21 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
+const FINMIND_TOKEN = process.env.FINMIND_TOKEN;
+
 async function fetchKline(ticker, isUS = false) {
   try {
+    const end = new Date().toISOString().slice(0,10);
     if (isUS) {
-      const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=60d`);
-      const json = await res.json();
-      const closes = json.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
-      return closes?.filter(Boolean) || [];
-    } else {
-      const end = new Date().toISOString().slice(0,10);
       const start = new Date(Date.now()-60*86400000).toISOString().slice(0,10);
-      const token = process.env.FINMIND_TOKEN;
-      const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${token}`);
+      const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`);
       const json = await res.json();
-      return json.data?.map(d => d.close) || [];
+      return (json.data||[]).map(d => d.Close);
+    } else {
+      const start = new Date(Date.now()-60*86400000).toISOString().slice(0,10);
+      const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`);
+      const json = await res.json();
+      return (json.data||[]).map(d => d.close);
     }
   } catch { return []; }
 }
