@@ -390,12 +390,39 @@ function MonitorTab({ allAssets }) {
 // ─── 回測 Tab ────────────────────────────────────────────────
 function BacktestTab() {
   const [params, setParams] = useState({
-    ticker:"QLD", is_us:true, benchmark:"QQQ", amount:1000000, target:0.5, j_entry:10, j_exit:90, days:720
+    ticker:"QLD", is_us:true, benchmark:"QQQ", amount:1000000, target:0.5,
+    j_entry:10, j_exit:90, days:720, period_days:30, drift_pct:5
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
+
+  function simRebalance(closes, raw, triggerFn) {
+    let cash = params.amount * (1 - params.target);
+    let shares = (params.amount * params.target) / closes[0];
+    const equity = [{ date:raw[0].date, value:params.amount }];
+    for (let i=1; i<closes.length; i++) {
+      const totalNow = cash + shares * closes[i];
+      if (triggerFn(i, totalNow, shares, closes[i])) {
+        const targetVal = totalNow * params.target;
+        shares = targetVal / closes[i];
+        cash = totalNow - targetVal;
+      }
+      equity.push({ date:raw[i].date, value:cash + shares*closes[i] });
+    }
+    return equity;
+  }
+
+  function calcMaxDrawdown(values) {
+    let peak = values[0], maxDD = 0;
+    for (const v of values) {
+      if (v > peak) peak = v;
+      const dd = (peak - v) / peak * 100;
+      if (dd > maxDD) maxDD = dd;
+    }
+    return maxDD;
+  }
 
   async function runBacktest() {
     setLoading(true); setResult(null);
@@ -411,46 +438,26 @@ function BacktestTab() {
     const kdj = calcKDJ(closes);
     const signals = checkSignals(closes, bb, kdj, params.j_entry, params.j_exit);
 
-    // 模擬再平衡（Python 移植版）
-      let cash = params.amount * (1 - params.target);
-      let shares = (params.amount * params.target) / closes[0];
-      const equity = [{ date:raw[0].date, value:params.amount }];
+    // 1. 訊號再平衡
+    const signalEquity = simRebalance(closes, raw, (i) => signals.some(s=>s.index===i));
 
-      for (let i=1; i<closes.length; i++) {
-        const totalNow = cash + shares * closes[i];
-        const sig = signals.find(s=>s.index===i);
-        if (sig) {
-          const equityVal = shares * closes[i];
-          const diff = totalNow * params.target - equityVal;
-          if (diff > 0) {
-            shares += diff / closes[i];
-            cash   -= diff;
-          } else {
-            shares -= Math.abs(diff) / closes[i];
-            cash   += Math.abs(diff);
-          }
-        }
-        equity.push({ date:raw[i].date, value:cash + shares*closes[i] });
-      }
+    // 2. 週期再平衡（每N天）
+    const periodEquity = simRebalance(closes, raw, (i) => i % params.period_days === 0);
 
-    const finalVal = equity[equity.length-1].value;
-    const totalReturn = (finalVal - params.amount) / params.amount * 100;
-    const maxDD = calcMaxDrawdown(equity.map(e=>e.value));
-    const buyHoldReturn = (closes[closes.length-1] - closes[0]) / closes[0] * 100;
+    // 3. 比例偏移再平衡（偏離超過X%觸發）
+    const driftEquity = simRebalance(closes, raw, (i, total, shares, price) => {
+      const actualPct = (shares * price) / total * 100;
+      return Math.abs(actualPct - params.target*100) >= params.drift_pct;
+    });
+
+    const signalReturn = (signalEquity[signalEquity.length-1].value - params.amount) / params.amount * 100;
+    const periodReturn = (periodEquity[periodEquity.length-1].value - params.amount) / params.amount * 100;
+    const driftReturn  = (driftEquity[driftEquity.length-1].value - params.amount) / params.amount * 100;
     const bmReturn = bmRaw.length ? (bmRaw[bmRaw.length-1].close - bmRaw[0].close) / bmRaw[0].close * 100 : null;
+    const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
-    setResult({ equity, finalVal, totalReturn, maxDD, buyHoldReturn, bmReturn, signals, raw, bmRaw });
+    setResult({ signalEquity, periodEquity, driftEquity, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD });
     setLoading(false);
-  }
-
-  function calcMaxDrawdown(values) {
-    let peak = values[0], maxDD = 0;
-    for (const v of values) {
-      if (v > peak) peak = v;
-      const dd = (peak - v) / peak * 100;
-      if (dd > maxDD) maxDD = dd;
-    }
-    return maxDD;
   }
 
   useEffect(() => {
@@ -463,14 +470,17 @@ function BacktestTab() {
       rightPriceScale: { borderColor:C.border },
       timeScale: { borderColor:C.border },
       width: chartRef.current.clientWidth,
-      height: 300,
+      height: 350,
     });
     chartInstance.current = chart;
 
-    const stratLine = chart.addLineSeries({ color:C.accent, lineWidth:2, title:"策略" });
-    stratLine.setData(result.equity.map(e=>({ time:e.date, value:e.value })));
+    const s1 = chart.addLineSeries({ color:C.accent,  lineWidth:2, title:"訊號再平衡" });
+    const s2 = chart.addLineSeries({ color:C.orange,  lineWidth:2, lineStyle:0, title:`週期(${params.period_days}天)` });
+    const s3 = chart.addLineSeries({ color:C.purple||"#9B6DFF", lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
+    s1.setData(result.signalEquity.map(e=>({ time:e.date, value:e.value })));
+    s2.setData(result.periodEquity.map(e=>({ time:e.date, value:e.value })));
+    s3.setData(result.driftEquity.map(e=>({ time:e.date, value:e.value })));
 
-    // 原型ETF買進持有線
     if (result.bmRaw?.length) {
       const bmInitShares = params.amount / result.bmRaw[0].close;
       const bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
@@ -499,40 +509,59 @@ function BacktestTab() {
   return (
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
-      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>布林 (20,2) + KDJ (9,3,3) 再平衡策略歷史模擬</div>
+      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>三種再平衡策略比較｜布林+KDJ訊號 vs 週期 vs 比例偏移</div>
 
       <Card style={{padding:16, marginBottom:16}}>
+        <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>基本設定</div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14}}>
           {p("ticker","槓桿ETF代號","text",{placeholder:"如 QLD / 00675L"})}
           {p("is_us","市場","select")}
           {p("benchmark","對比原型ETF","text",{placeholder:"如 QQQ / 0050"})}
           {p("amount","初始資金 (NT$)")}
           {p("target","股票佔比（0.5=50%）")}
+          {p("days","回測天數")}
+        </div>
+        <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>訊號再平衡參數</div>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
           {p("j_entry","J值進場閾值")}
           {p("j_exit","J值出場閾值")}
-          {p("days","回測天數")}
+        </div>
+        <div style={{fontSize:12, color:C.orange, fontWeight:600, marginBottom:10}}>週期再平衡參數</div>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
+          {p("period_days","再平衡週期（天）")}
+        </div>
+        <div style={{fontSize:12, color:"#9B6DFF", fontWeight:600, marginBottom:10}}>比例偏移再平衡參數</div>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
+          {p("drift_pct","偏離觸發閾值（%）")}
         </div>
         <Btn onClick={runBacktest} color={loading?C.textMuted:C.accent}>{loading?"計算中...":"▶ 執行回測"}</Btn>
       </Card>
 
       {result && (
         <>
-          {/* 績效指標 */}
-          <div style={{display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16}}>
+          <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16}}>
             {[
-              ["策略報酬", `${result.totalReturn>=0?"+":""}${result.totalReturn.toFixed(1)}%`, result.totalReturn>=0?C.accent:C.red],
-              ["原型ETF報酬", result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-", (result.bmReturn||0)>=0?C.blue:C.red],
-              ["最大回撤", `-${result.maxDD.toFixed(1)}%`, C.gold],
+              ["📡 訊號再平衡", `${result.signalReturn>=0?"+":""}${result.signalReturn.toFixed(1)}%`, C.accent],
+              ["🔄 週期再平衡", `${result.periodReturn>=0?"+":""}${result.periodReturn.toFixed(1)}%`, C.orange],
+              ["📊 比例偏移再平衡", `${result.driftReturn>=0?"+":""}${result.driftReturn.toFixed(1)}%`, "#9B6DFF"],
+              ["📈 原型ETF買進持有", result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-", C.blue],
+              ["最大回撤(訊號)", `-${result.maxDD.toFixed(1)}%`, C.gold],
               ["訊號次數", `${result.signals.length} 次`, C.textMuted],
             ].map(([label, val, color])=>(
               <Card key={label} style={{padding:"12px 14px", textAlign:"center"}}>
                 <div style={{color:C.textMuted, fontSize:11, marginBottom:6}}>{label}</div>
-                <div style={{color, fontWeight:700, fontSize:18}}>{val}</div>
+                <div style={{color, fontWeight:700, fontSize:16}}>{val}</div>
               </Card>
             ))}
           </div>
           <Card style={{padding:12, marginBottom:16}}>
-            <div style={{color:C.textMuted, fontSize:11, marginBottom:8}}>資產曲線（青綠=策略，藍虛線=買進持有）</div>
+            <div style={{display:"flex", gap:16, marginBottom:8}}>
+              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移",  "#9B6DFF"],["原型ETF",C.blue]].map(([l,c])=>(
+                <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
+                  <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
+                </div>
+              ))}
+            </div>
             <div ref={chartRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
           </Card>
         </>
