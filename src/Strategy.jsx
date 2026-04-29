@@ -10,7 +10,9 @@ const C = {
   text:"#E2EAF4", textMuted:"#5A7399",
 };
 
-const FINMIND_TOKEN = "REDACTED_FINMIND_TOKEN";
+// ── 改這裡：填入你的 Railway 部署網址 ───────────────────────
+// 部署後長這樣：https://yourapp.railway.app
+const KLINE_API = import.meta.env.VITE_KLINE_API || "https://your-app.railway.app";
 
 const fmt = (n, d=0) => Math.abs(n).toLocaleString("zh-TW", {maximumFractionDigits:d});
 
@@ -44,34 +46,27 @@ function Input({value, onChange, placeholder, style={}, type="text"}) {
   );
 }
 
-// ─── 資料抓取 ───────────────────────────────────────────────
+// ─── 資料抓取（改接 yfinance 後端）─────────────────────────
 async function fetchTWKline(ticker, days=720) {
   try {
-    const end = new Date().toISOString().slice(0,10);
-    const start = new Date(Date.now()-days*86400000).toISOString().slice(0,10);
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
-    const res = await fetch(url);
+    const res = await fetch(`${KLINE_API}/kline/tw?ticker=${ticker}&days=${days}`);
     const json = await res.json();
-    return (json.data||[]).map(d=>({date:d.date, open:d.open, high:d.max, low:d.min, close:d.close}));
-  } catch { return []; }
+    return json.data || [];
+  } catch(e) {
+    console.error(`[fetchTWKline] ${ticker}`, e);
+    return [];
+  }
 }
 
 async function fetchUSKline(ticker, days=720) {
   try {
-    const range = days > 365 ? '2y' : '1y';
-    const res = await fetch(`/api/us-kline?ticker=${ticker}&range=${range}`);
+    const res = await fetch(`${KLINE_API}/kline/us?ticker=${ticker}&days=${days}`);
     const json = await res.json();
-    const quotes = json.chart?.result?.[0];
-    const times = quotes?.timestamp || [];
-    const closes = quotes?.indicators?.quote?.[0]?.close || [];
-    const opens = quotes?.indicators?.quote?.[0]?.open || [];
-    const highs = quotes?.indicators?.quote?.[0]?.high || [];
-    const lows = quotes?.indicators?.quote?.[0]?.low || [];
-    return times.map((t, i) => ({
-      date: new Date(t*1000).toISOString().slice(0,10),
-      open: opens[i], high: highs[i], low: lows[i], close: closes[i]
-    })).filter(d => d.close);
-  } catch { return []; }
+    return json.data || [];
+  } catch(e) {
+    console.error(`[fetchUSKline] ${ticker}`, e);
+    return [];
+  }
 }
 
 // ─── 指標計算 ────────────────────────────────────────────────
@@ -205,7 +200,6 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 })
     else if (lastKDJ.j > jExit) { status='J值高位'; statusColor=C.gold; }
   }
 
-  // 只用「這檔股票 + 對應現金」計算比例
   const cashName = isUS ? 'USD' : '現金';
   const holdingAsset = assets.find(a => a.name === ticker);
   const cashAsset = assets.find(a => a.name === cashName);
@@ -223,6 +217,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 })
           <span style={{fontWeight:700, fontSize:16}}>{ticker}</span>
           {lastClose>0 && <span style={{color:C.textMuted, fontSize:13}}>{isUS?'$':'NT$'}{lastClose?.toFixed(2)}</span>}
           <Badge text={status} color={statusColor}/>
+          <Badge text="還原股價" color={C.blue}/>
         </div>
         {lastKDJ && <span style={{color:C.textMuted, fontSize:12}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
@@ -251,6 +246,7 @@ function MonitorTab({ allAssets }) {
   const [tickers, setTickers] = useState([]);
   const [klineMap, setKlineMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadingTicker, setLoadingTicker] = useState(""); // 顯示正在抓哪支
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0 });
@@ -264,10 +260,13 @@ function MonitorTab({ allAssets }) {
   async function loadKlines(list) {
     setLoading(true);
     const map = {};
-    await Promise.all(list.map(async t => {
+    // 逐一抓，顯示進度（避免同時打太多 API）
+    for (const t of list) {
+      setLoadingTicker(t.ticker);
       map[t.ticker] = t.is_us ? await fetchUSKline(t.ticker) : await fetchTWKline(t.ticker);
-    }));
+    }
     setKlineMap(map);
+    setLoadingTicker("");
     setLoading(false);
   }
 
@@ -302,18 +301,16 @@ function MonitorTab({ allAssets }) {
 
   return (
     <div>
-      {/* 標題列 */}
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
         <div>
           <div style={{fontWeight:700, fontSize:15, color:C.text}}>再平衡訊號監控</div>
-          <div style={{color:C.textMuted, fontSize:12, marginTop:2}}>布林通道 (20,2) + KDJ (9,3,3)｜箭頭標記為訊號觸發點</div>
+          <div style={{color:C.textMuted, fontSize:12, marginTop:2}}>布林通道 (20,2) + KDJ (9,3,3)｜還原股價｜箭頭標記為訊號觸發點</div>
         </div>
         <Btn onClick={()=>{ setShowAdd(!showAdd); setEditId(null); setForm({ticker:"",is_us:false,target:0.5,j_entry:10,j_exit:90,amount:0}); }}>
           {showAdd ? "✕ 取消" : "+ 新增股票"}
         </Btn>
       </div>
 
-      {/* 新增/編輯表單 */}
       {showAdd && (
         <Card style={{padding:16, marginBottom:16}}>
           <div style={{fontWeight:600, fontSize:13, marginBottom:12, color:C.accent}}>{editId?"編輯股票":"新增監控股票"}</div>
@@ -351,7 +348,6 @@ function MonitorTab({ allAssets }) {
         </Card>
       )}
 
-      {/* 股票清單管理 */}
       {tickers.length > 0 && (
         <div style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:16}}>
           {tickers.map(t => (
@@ -366,9 +362,11 @@ function MonitorTab({ allAssets }) {
         </div>
       )}
 
-      {/* 圖表 */}
       {loading ? (
-        <div style={{textAlign:"center", padding:40, color:C.accent}}>抓取K線資料中...</div>
+        <div style={{textAlign:"center", padding:40, color:C.accent}}>
+          <div style={{marginBottom:8}}>抓取還原K線資料中...</div>
+          {loadingTicker && <div style={{color:C.textMuted, fontSize:13}}>{loadingTicker} 處理中</div>}
+        </div>
       ) : (
         tickers.map(t => (
           <KChart
@@ -395,6 +393,7 @@ function BacktestTab() {
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("");
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
 
@@ -429,24 +428,31 @@ function BacktestTab() {
   async function runBacktest() {
     setLoading(true); setResult(null);
     const fetchFn = params.is_us ? fetchUSKline : fetchTWKline;
-    const [raw, bmRaw] = await Promise.all([
-      fetchFn(params.ticker, params.days),
-      params.benchmark?.trim() ? fetchFn(params.benchmark, params.days) : Promise.resolve([]),
-    ]);
-    if (!raw.length) { setLoading(false); return; }
+
+    setLoadingMsg(`抓取 ${params.ticker} 還原K線...`);
+    const raw = await fetchFn(params.ticker, params.days);
+
+    let bmRaw = [];
+    if (params.benchmark?.trim()) {
+      setLoadingMsg(`抓取 ${params.benchmark} 比較基準...`);
+      bmRaw = await fetchFn(params.benchmark, params.days);
+    }
+
+    setLoadingMsg("計算指標與回測...");
+
+    if (!raw.length) {
+      setLoading(false);
+      setLoadingMsg("❌ 無法取得資料，請確認股票代號");
+      return;
+    }
 
     const closes = raw.map(d=>d.close);
     const bb = calcBB(closes);
     const kdj = calcKDJ(closes);
     const signals = checkSignals(closes, bb, kdj, params.j_entry, params.j_exit);
 
-    // 1. 訊號再平衡
     const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, raw, (i) => signals.some(s=>s.index===i));
-
-    // 2. 週期再平衡（每N天）
     const { equity: periodEquity, markers: periodMarkers } = simRebalance(closes, raw, (i) => i % params.period_days === 0);
-
-    // 3. 比例偏移再平衡（偏離超過X%觸發）
     const { equity: driftEquity, markers: driftMarkers } = simRebalance(closes, raw, (i, total, shares, price) => {
       const actualPct = (shares * price) / total * 100;
       return Math.abs(actualPct - params.target*100) >= params.drift_pct;
@@ -459,6 +465,7 @@ function BacktestTab() {
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
     setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD });
+    setLoadingMsg("");
     setLoading(false);
   }
 
@@ -478,12 +485,11 @@ function BacktestTab() {
 
     const s1 = chart.addLineSeries({ color:C.accent,  lineWidth:2, title:"訊號再平衡" });
     const s2 = chart.addLineSeries({ color:C.orange,  lineWidth:2, lineStyle:0, title:`週期(${params.period_days}天)` });
-    const s3 = chart.addLineSeries({ color:C.purple||"#9B6DFF", lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
+    const s3 = chart.addLineSeries({ color:"#9B6DFF", lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
     s1.setData(result.signalEquity.map(e=>({ time:e.date, value:e.value })));
     s2.setData(result.periodEquity.map(e=>({ time:e.date, value:e.value })));
     s3.setData(result.driftEquity.map(e=>({ time:e.date, value:e.value })));
 
-    // 標記各策略再平衡點
     s1.setMarkers(result.signalMarkers.map(date=>({ time:date, position:'aboveBar', color:C.accent, shape:'circle', text:'' })));
     s2.setMarkers(result.periodMarkers.map(date=>({ time:date, position:'aboveBar', color:C.orange, shape:'circle', text:'' })));
     s3.setMarkers(result.driftMarkers.map(date=>({ time:date, position:'belowBar', color:'#9B6DFF', shape:'circle', text:'' })));
@@ -516,7 +522,7 @@ function BacktestTab() {
   return (
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
-      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>三種再平衡策略比較｜布林+KDJ訊號 vs 週期 vs 比例偏移</div>
+      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>三種再平衡策略比較｜布林+KDJ訊號 vs 週期 vs 比例偏移｜<span style={{color:C.blue}}>還原股價（除息/分割調整）</span></div>
 
       <Card style={{padding:16, marginBottom:16}}>
         <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>基本設定</div>
@@ -541,7 +547,10 @@ function BacktestTab() {
         <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
           {p("drift_pct","偏離觸發閾值（%）")}
         </div>
-        <Btn onClick={runBacktest} color={loading?C.textMuted:C.accent}>{loading?"計算中...":"▶ 執行回測"}</Btn>
+        <div style={{display:"flex", alignItems:"center", gap:12}}>
+          <Btn onClick={runBacktest} color={loading?C.textMuted:C.accent}>{loading?"計算中...":"▶ 執行回測"}</Btn>
+          {loadingMsg && <span style={{color:C.accent, fontSize:12}}>{loadingMsg}</span>}
+        </div>
       </Card>
 
       {result && (
@@ -563,7 +572,7 @@ function BacktestTab() {
           </div>
           <Card style={{padding:12, marginBottom:16}}>
             <div style={{display:"flex", gap:16, marginBottom:8}}>
-              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移",  "#9B6DFF"],["原型ETF",C.blue]].map(([l,c])=>(
+              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["原型ETF",C.blue]].map(([l,c])=>(
                 <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
                   <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
                 </div>
@@ -583,7 +592,6 @@ export default function Strategy({ allAssets }) {
 
   return (
     <div style={{display:"flex", flexDirection:"column", gap:0}}>
-      {/* Tab 切換 */}
       <div style={{display:"flex", gap:8, marginBottom:20}}>
         {[["monitor","📡 監控"],["backtest","📊 回測"]].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{
