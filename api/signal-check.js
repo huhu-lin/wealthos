@@ -199,10 +199,12 @@ async function sendTelegram(msg) {
 }
 
 export default async function handler(req) {
-  const tickers = [
-    { ticker: '00675L', isUS: false },
-    { ticker: 'QLD',    isUS: true  },
-  ];
+  // 從 strategy_tickers 讀取策略設定
+  const { data: strategyTickers } = await supabase.from('strategy_tickers').select('*');
+  if (!strategyTickers?.length) {
+    console.log('[signal-check] 沒有策略設定，結束');
+    return new Response('ok', { status: 200 });
+  }
 
   const { data: rawAssets } = await supabase.from('assets').select('*');
   const usdtwd = await fetchUSDTWD();
@@ -210,11 +212,13 @@ export default async function handler(req) {
   const total  = assets.reduce((s,x)=>s+(x.value_twd||0),0);
   console.log(`[signal-check] 即時總資產 NT$${Math.round(total)}, 股票數 ${assets.length}`);
 
-  for (const { ticker, isUS } of tickers) {
+  for (const st of strategyTickers) {
+    const { ticker, is_us: isUS, target, j_entry: jEntry, j_exit: jExit } = st;
+
     const closes = await fetchKline(ticker, isUS);
     console.log(`[${ticker}] K線筆數: ${closes.length}, 最新收盤: ${closes[closes.length-1]?.toFixed(2)}`);
 
-    const result = checkSignal(closes);
+    const result = checkSignal(closes, jEntry, jExit);
     const { signal, price, bb, kdj, jBelowFlag, jAboveFlag } = result;
 
     console.log(`[${ticker}] signal=${signal ?? 'null'}, J=${kdj?.j?.toFixed(1)}, 蓄力旗標=${jBelowFlag}, 過熱旗標=${jAboveFlag}`);
@@ -231,16 +235,16 @@ export default async function handler(req) {
     const holdingValue = holding?.value_twd ?? 0;
 
     // 資金池：台股用「該股票 + 台幣現金」，美股用「該股票 + 美金現金」
-    const cashAsset  = isUS
+    const cashAsset = isUS
       ? assets.find(a=>a.name==='USD')
       : assets.find(a=>a.name==='現金');
-    const cashValue  = cashAsset?.value_twd ?? 0;
-    const poolTotal  = holdingValue + cashValue;
+    const cashValue = cashAsset?.value_twd ?? 0;
+    const poolTotal = holdingValue + cashValue;
 
     const actualPct = poolTotal>0 ? (holdingValue/poolTotal*100).toFixed(1) : '0.0';
-    const targetPct = holding?.target ? (holding.target*100).toFixed(1) : '-';
-    const diffAmt   = poolTotal>0 && holding?.target
-      ? Math.round((holding.target - holdingValue/poolTotal)*poolTotal) : '-';
+    const targetPct = (target*100).toFixed(1);
+    const diffAmt   = poolTotal>0
+      ? Math.round((target - holdingValue/poolTotal)*poolTotal) : '-';
 
     console.log(`[${ticker}] 資金池 NT$${Math.round(poolTotal)}, 持倉 NT$${Math.round(holdingValue)}, 現金 NT$${Math.round(cashValue)}`);
 
