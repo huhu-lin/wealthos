@@ -112,6 +112,78 @@ function checkSignal(closes, jThresholdEntry=10, jThresholdExit=90) {
   return { signal, price, bb, kdj, jBelowFlag, jAboveFlag };
 }
 
+// 抓 USD/TWD 即時匯率
+async function fetchUSDTWD() {
+  try {
+    const url = 'https://query1.finance.yahoo.com/v8/finance/chart/USDTWD=X?interval=1d&range=5d';
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const json = await res.json();
+    const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
+    const rate = closes.filter(v => v != null).slice(-1)[0] ?? 31.5;
+    console.log(`[USDTWD] 匯率: ${rate.toFixed(2)}`);
+    return rate;
+  } catch(e) {
+    console.error('[fetchUSDTWD] error:', e.message);
+    return 31.5; // fallback
+  }
+}
+
+// 抓美股最新收盤價（單一 ticker）
+async function fetchLatestPriceUS(ticker) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=5d`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const json = await res.json();
+    const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
+    return closes.filter(v => v != null).slice(-1)[0] ?? 0;
+  } catch { return 0; }
+}
+
+// 抓台股最新收盤價（單一 ticker）
+async function fetchLatestPriceTW(ticker) {
+  try {
+    const end   = new Date().toISOString().slice(0,10);
+    const start = new Date(Date.now()-10*86400000).toISOString().slice(0,10);
+    const res   = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`);
+    const json  = await res.json();
+    const arr   = json.data ?? [];
+    return arr[arr.length-1]?.close ?? 0;
+  } catch { return 0; }
+}
+
+// US tickers（用來判斷是否乘匯率）
+const US_TICKERS = ['QLD','VT'];
+const TW_TICKERS = ['006208','00675L'];
+
+// 計算各資產即時 value_twd
+async function calcLiveValues(assets, usdtwd) {
+  const result = [];
+  for (const a of assets) {
+    let valueTwd = 0;
+    const shares = a.shares ?? 0;
+    if (shares === 0) {
+      // 現金類：直接用 value 欄位（如果有）或 price
+      if (a.name === 'USD') {
+        // USD 現金：shares 存的是美元金額
+        valueTwd = (a.shares || 0) * usdtwd;
+      } else {
+        // 台幣現金：price 欄位存台幣金額
+        valueTwd = a.price ?? 0;
+      }
+    } else if (US_TICKERS.includes(a.name)) {
+      const price = await fetchLatestPriceUS(a.name);
+      valueTwd = shares * price * usdtwd;
+      console.log(`[liveValue] ${a.name}: ${shares} 股 × $${price.toFixed(2)} × ${usdtwd.toFixed(2)} = NT$${Math.round(valueTwd)}`);
+    } else {
+      const price = await fetchLatestPriceTW(a.name);
+      valueTwd = shares * price;
+      console.log(`[liveValue] ${a.name}: ${shares} 股 × NT$${price.toFixed(2)} = NT$${Math.round(valueTwd)}`);
+    }
+    result.push({ ...a, value_twd: valueTwd });
+  }
+  return result;
+}
+
 async function sendTelegram(msg) {
   const token  = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -131,9 +203,11 @@ export default async function handler(req) {
     { ticker: 'QLD',    isUS: true  },
   ];
 
-  const { data: assets } = await supabase.from('assets').select('*');
-  const total = assets?.reduce((s,x)=>s+(x.value_twd||0),0) || 0;
-  console.log(`[signal-check] 總資產 NT$${total}, 股票數 ${assets?.length ?? 0}`);
+  const { data: rawAssets } = await supabase.from('assets').select('*');
+  const usdtwd = await fetchUSDTWD();
+  const assets = await calcLiveValues(rawAssets ?? [], usdtwd);
+  const total  = assets.reduce((s,x)=>s+(x.value_twd||0),0);
+  console.log(`[signal-check] 即時總資產 NT$${Math.round(total)}, 股票數 ${assets.length}`);
 
   for (const { ticker, isUS } of tickers) {
     const closes = await fetchKline(ticker, isUS);
