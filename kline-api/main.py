@@ -85,10 +85,10 @@ def fetch_kline(ticker_yf: str, days: int) -> list:
         for idx, row in df.iterrows():
             result.append({
                 "date": idx.strftime("%Y-%m-%d"),
-                "open":  round(float(row["Open"]), 4),
-                "high":  round(float(row["High"]), 4),
-                "low":   round(float(row["Low"]), 4),
-                "close": round(float(row["Close"]), 4),
+                "open":  round(float(row["Open"].iloc[0] if hasattr(row["Open"], 'iloc') else row["Open"]), 4),
+                "high":  round(float(row["High"].iloc[0] if hasattr(row["High"], 'iloc') else row["High"]), 4),
+                "low":   round(float(row["Low"].iloc[0] if hasattr(row["Low"], 'iloc') else row["Low"]), 4),
+                "close": round(float(row["Close"].iloc[0] if hasattr(row["Close"], 'iloc') else row["Close"]), 4),
             })
         return result
     except Exception as e:
