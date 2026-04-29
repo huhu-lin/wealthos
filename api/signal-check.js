@@ -227,12 +227,22 @@ export default async function handler(req) {
     const signalText = signal === 'BUY' ? '📈 反轉向上訊號' : '📉 反轉向下訊號';
     const action     = signal === 'BUY' ? '市場可能反彈，建議檢視資產比例' : '市場可能回落，建議檢視資產比例';
 
-    const holding      = assets?.filter(a=>a.ticker===ticker) || [];
-    const holdingValue = holding.reduce((s,x)=>s+(x.value_twd||0),0);
-    const actualPct    = total>0 ? (holdingValue/total*100).toFixed(1) : 0;
-    const targetPct    = holding[0]?.target ? (holding[0].target*100).toFixed(1) : '-';
-    const diffAmt      = total>0 && holding[0]?.target
-      ? Math.round((holding[0].target - holdingValue/total)*total) : '-';
+    const holding      = assets.find(a=>a.name===ticker);
+    const holdingValue = holding?.value_twd ?? 0;
+
+    // 資金池：台股用「該股票 + 台幣現金」，美股用「該股票 + 美金現金」
+    const cashAsset  = isUS
+      ? assets.find(a=>a.name==='USD')
+      : assets.find(a=>a.name==='現金');
+    const cashValue  = cashAsset?.value_twd ?? 0;
+    const poolTotal  = holdingValue + cashValue;
+
+    const actualPct = poolTotal>0 ? (holdingValue/poolTotal*100).toFixed(1) : '0.0';
+    const targetPct = holding?.target ? (holding.target*100).toFixed(1) : '-';
+    const diffAmt   = poolTotal>0 && holding?.target
+      ? Math.round((holding.target - holdingValue/poolTotal)*poolTotal) : '-';
+
+    console.log(`[${ticker}] 資金池 NT$${Math.round(poolTotal)}, 持倉 NT$${Math.round(holdingValue)}, 現金 NT$${Math.round(cashValue)}`);
 
     const msg = [
       '🔔 <b>WealthOS 再平衡通知</b>',
