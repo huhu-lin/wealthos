@@ -6,7 +6,7 @@ const supabase = createClient(
 );
 
 // ── 改這裡：你的 Railway 後端網址 ───────────────────────────
-const KLINE_API = process.env.KLINE_API_URL || "https://your-app.railway.app";
+const KLINE_API = process.env.KLINE_API_URL || "https://wealthos-kline.onrender.com";
 
 // ─── 改接 yfinance 後端（還原股價）─────────────────────────
 async function fetchKline(ticker, isUS = false) {
