@@ -161,14 +161,15 @@ async function calcLiveValues(assets, usdtwd) {
   for (const a of assets) {
     let valueTwd = 0;
     const shares = a.shares ?? 0;
-    if (shares === 0) {
-      // 現金類：直接用 value 欄位（如果有）或 price
-      if (a.name === 'USD') {
-        // USD 現金：shares 存的是美元金額
-        valueTwd = (a.shares || 0) * usdtwd;
+    if (a.type === 'cash') {
+      if (a.value_usd && a.value_usd > 0) {
+        // 美金現金：value_usd × 即時匯率
+        valueTwd = a.value_usd * usdtwd;
+        console.log(`[liveValue] ${a.name}: $${a.value_usd} × ${usdtwd.toFixed(2)} = NT$${Math.round(valueTwd)}`);
       } else {
-        // 台幣現金：price 欄位存台幣金額
-        valueTwd = a.price ?? 0;
+        // 台幣現金：直接用 value_twd
+        valueTwd = a.value_twd ?? 0;
+        console.log(`[liveValue] ${a.name}: 台幣現金 NT$${Math.round(valueTwd)}`);
       }
     } else if (US_TICKERS.includes(a.name)) {
       const price = await fetchLatestPriceUS(a.name);
