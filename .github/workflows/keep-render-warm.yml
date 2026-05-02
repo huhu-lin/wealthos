@@ -15,12 +15,12 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - name: Ping Render kline-api
+      - name: Ping Render kline-api health endpoint
         run: |
           echo "🔥 Pinging Render to prevent cold start..."
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 60 \
-            "https://wealthos-kline.onrender.com/kline/tw?ticker=0050&days=1")
+            --max-time 10 \
+            "https://wealthos-kline.onrender.com/health")
           echo "Response status: $STATUS"
           if [ "$STATUS" = "200" ]; then
             echo "✅ Render is warm and responding"
