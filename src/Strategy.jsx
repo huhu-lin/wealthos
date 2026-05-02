@@ -66,9 +66,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ─── Days Bucket：把天數對應到最近的 cache bucket ────────────
 // 相同 bucket 內的不同天數共用同一份快取，只需抓一次
 // e.g. 4900/5000/5100 → 全部對應 5200，抓過一次後都秒出
-const DAY_BUCKETS = [365, 730, 1095, 1460, 2190, 2920, 5200];
+// Bucket 涵蓋 1 天～全部可用歷史（9999 = 抓所有 yfinance 有的資料）
+const DAY_BUCKETS = [365, 730, 1095, 1460, 2190, 2920, 5200, 7300, 9999];
 function bucketDays(days) {
-  return DAY_BUCKETS.find(b => b >= days) ?? 5200;
+  return DAY_BUCKETS.find(b => b >= days) ?? 9999;
 }
 
 // ─── K 線資料抓取（走 Vercel proxy，避免瀏覽器 CORS 問題）───────────────
@@ -464,7 +465,7 @@ function MonitorTab({ allAssets }) {
 function BacktestTab() {
   const [params, setParams] = useState({
     ticker:"QLD", is_us:true, benchmark:"QQQ", amount:1000000, target:0.5,
-    j_entry:10, j_exit:90, days:720, period_days:30, drift_pct:5
+    j_entry:10, j_exit:90, days:3650, period_days:30, drift_pct:5
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -558,7 +559,15 @@ function BacktestTab() {
     const bmReturn = bmRaw.length ? (bmRaw[bmRaw.length-1].close - bmRaw[0].close) / bmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
-    setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD });
+    // 實際回測資訊（ETF 上市時間可能短於使用者設定的天數）
+    const actualStart    = raw[0].date;
+    const actualEnd      = raw[raw.length - 1].date;
+    const tradingDays    = raw.length;
+    const requestedDays  = params.days;
+    const dataShortfall  = requestedDays - Math.round(tradingDays * 365 / 252); // 換算成約略日曆天
+    const isDataShort    = dataShortfall > 90; // 差超過 90 天才警告
+
+    setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -649,6 +658,28 @@ function BacktestTab() {
 
       {result && (
         <>
+          {/* ── 實際回測期間 ── */}
+          <div style={{
+            background: C.surface, border:`1px solid ${C.border}`,
+            borderRadius:10, padding:"10px 14px", marginBottom:12,
+            display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8,
+          }}>
+            <div style={{fontSize:12, color:C.textMuted}}>
+              <span style={{color:C.text, fontWeight:600}}>實際回測期間</span>
+              {"　"}{result.actualStart} ～ {result.actualEnd}
+              {"　"}
+              <span style={{color:C.accent}}>({result.tradingDays.toLocaleString()} 個交易日)</span>
+            </div>
+            {result.isDataShort && (
+              <div style={{
+                background: C.gold+"18", border:`1px solid ${C.gold}40`,
+                borderRadius:6, padding:"3px 10px", fontSize:11, color:C.gold,
+              }}>
+                ⚠️ ETF 上市時間較短，實際資料少於設定的 {result.requestedDays.toLocaleString()} 天
+              </div>
+            )}
+          </div>
+
           <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16}}>
             {[
               {
