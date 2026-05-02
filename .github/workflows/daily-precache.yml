@@ -1,0 +1,55 @@
+name: Daily Pre-cache Popular ETFs
+
+# 每天台灣時間 06:00（UTC 22:00）開盤前預先快取熱門 ETF
+# 讓用戶第一次查詢時直接命中 Supabase，不需等 Render 抓資料
+# GitHub Actions 免費方案每月 2000 分鐘，此 workflow 每次約 15-20 分鐘
+
+on:
+  schedule:
+    - cron: "0 22 * * *"   # 每天 UTC 22:00 = 台灣時間 06:00
+  workflow_dispatch:        # 允許手動觸發（新增 ticker 後可立即跑一次）
+
+jobs:
+  precache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Pre-cache Taiwan ETFs
+        run: |
+          BASE="https://wealthos-kline.onrender.com"
+          DAYS=3650
+
+          TW_TICKERS=("0050" "0056" "006208" "00878" "00646" "00631L" "00692" "00757")
+
+          echo "=== 台股 ETF 預載開始 ==="
+          for t in "${TW_TICKERS[@]}"; do
+            echo "→ 預載 $t ($DAYS 天)..."
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
+              "$BASE/kline/tw?ticker=$t&days=$DAYS")
+            echo "  $t → HTTP $STATUS"
+            sleep 3
+          done
+          echo "=== 台股 ETF 預載完成 ==="
+
+      - name: Pre-cache US ETFs and Leveraged ETFs
+        run: |
+          BASE="https://wealthos-kline.onrender.com"
+          DAYS=3650
+
+          US_TICKERS=("SPY" "QQQ" "IWM" "VOO" "VTI" "QLD" "TQQQ" "SSO" "UPRO" "SOXL" "TECL" "FNGU")
+
+          echo "=== 美股 ETF 預載開始 ==="
+          for t in "${US_TICKERS[@]}"; do
+            echo "→ 預載 $t ($DAYS 天)..."
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
+              "$BASE/kline/us?ticker=$t&days=$DAYS")
+            echo "  $t → HTTP $STATUS"
+            sleep 3
+          done
+          echo "=== 美股 ETF 預載完成 ==="
+
+      - name: Summary
+        run: |
+          echo "✅ 每日預載完成，快取已更新至今日"
+          echo "用戶查詢以上 ticker 將直接命中 Supabase，無需等待 Render 抓取"
