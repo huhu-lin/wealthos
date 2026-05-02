@@ -586,16 +586,51 @@ function BacktestTab() {
         <>
           <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16}}>
             {[
-              ["📡 訊號再平衡", `${result.signalReturn>=0?"+":""}${result.signalReturn.toFixed(1)}%`, C.accent, `${result.signalMarkers.length} 次`],
-              ["🔄 週期再平衡", `${result.periodReturn>=0?"+":""}${result.periodReturn.toFixed(1)}%`, C.orange, `${result.periodMarkers.length} 次`],
-              ["📊 比例偏移再平衡", `${result.driftReturn>=0?"+":""}${result.driftReturn.toFixed(1)}%`, "#9B6DFF", `${result.driftMarkers.length} 次`],
-              ["📈 原型ETF買進持有", result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-", C.blue, ""],
-              ["最大回撤(訊號)", `-${result.maxDD.toFixed(1)}%`, C.gold, ""],
-            ].map(([label, val, color, count])=>(
+              {
+                label:"📡 訊號再平衡",
+                pct:`${result.signalReturn>=0?"+":""}${result.signalReturn.toFixed(1)}%`,
+                amt: result.signalReturn/100*params.amount,
+                color:C.accent,
+                sub:`${result.signalMarkers.length} 次再平衡`
+              },
+              {
+                label:"🔄 週期再平衡",
+                pct:`${result.periodReturn>=0?"+":""}${result.periodReturn.toFixed(1)}%`,
+                amt: result.periodReturn/100*params.amount,
+                color:C.orange,
+                sub:`${result.periodMarkers.length} 次再平衡`
+              },
+              {
+                label:"📊 比例偏移再平衡",
+                pct:`${result.driftReturn>=0?"+":""}${result.driftReturn.toFixed(1)}%`,
+                amt: result.driftReturn/100*params.amount,
+                color:"#9B6DFF",
+                sub:`${result.driftMarkers.length} 次再平衡`
+              },
+              {
+                label:"📈 原型ETF買進持有",
+                pct: result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-",
+                amt: result.bmReturn!=null ? result.bmReturn/100*params.amount : null,
+                color:C.blue,
+                sub:""
+              },
+              {
+                label:"最大回撤(訊號)",
+                pct:`-${result.maxDD.toFixed(1)}%`,
+                amt: -result.maxDD/100*params.amount,
+                color:C.gold,
+                sub:""
+              },
+            ].map(({label, pct, amt, color, sub})=>(
               <Card key={label} style={{padding:"12px 14px", textAlign:"center"}}>
                 <div style={{color:C.textMuted, fontSize:11, marginBottom:6}}>{label}</div>
-                <div style={{color, fontWeight:700, fontSize:16}}>{val}</div>
-                {count && <div style={{color:C.textMuted, fontSize:11, marginTop:4}}>{count}</div>}
+                <div style={{color, fontWeight:700, fontSize:16}}>{pct}</div>
+                {amt!=null && (
+                  <div style={{color, fontSize:12, marginTop:3, fontFamily:"monospace"}}>
+                    {amt>=0?"+":"-"}NT${fmt(Math.abs(amt))}
+                  </div>
+                )}
+                {sub && <div style={{color:C.textMuted, fontSize:11, marginTop:4}}>{sub}</div>}
               </Card>
             ))}
           </div>
