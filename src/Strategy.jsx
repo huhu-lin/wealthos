@@ -68,10 +68,19 @@ async function getKlineFromCache(cacheKey, days) {
 // ─── 等待函數 ────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// ─── 預熱 Render 伺服器（BacktestTab 掛載時呼叫）──────────────
+// 用 mode:'no-cors' 讓瀏覽器送出請求但不要求 CORS header，
+// 目的只是讓 Render 從休眠中喚醒，不需要拿到任何回應資料
+function warmupRender() {
+  const url = `${KLINE_API}/kline/tw?ticker=0050&days=1`;
+  fetch(url, { mode: "no-cors" }).catch(() => {});
+  console.log("[warmup] 預熱 Render 伺服器...");
+}
+
 // ─── 帶重試的 fetch（處理 Render 免費方案冷啟動問題）─────────
 // Render 免費方案閒置 15 分鐘後休眠，首次請求因 CORS header 尚未就緒而失敗
-// 自動等待 4 秒後重試一次，讓伺服器有時間喚醒
-async function fetchWithWakeup(url, retries=1, delayMs=4000) {
+// 預熱後仍可能需要幾秒才完全就緒，最多重試 3 次，每次等 5 秒
+async function fetchWithWakeup(url, retries=3, delayMs=5000) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url);
@@ -437,6 +446,9 @@ function BacktestTab() {
   const [loadingMsg, setLoadingMsg] = useState("");
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
+
+  // 掛載時立即預熱 Render 伺服器，讓 CORS 在使用者按下按鈕前就就緒
+  useEffect(() => { warmupRender(); }, []);
 
   function simRebalance(closes, raw, triggerFn) {
     let cash = params.amount * (1 - params.target);
