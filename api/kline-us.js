@@ -57,7 +57,7 @@ export default async function handler(req) {
   for (let attempt = 0; attempt <= 2; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout
+      const timeout = setTimeout(() => controller.abort(), 28000); // 28s timeout
 
       try {
         const upstream = await fetch(upstreamUrl, { signal: controller.signal });
