@@ -29,6 +29,7 @@ export default function CryptoAccount({ assets, reload }) {
   const [saving,   setSaving]   = useState(false);
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
+  const [error,    setError]    = useState(null);
 
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -38,42 +39,78 @@ export default function CryptoAccount({ assets, reload }) {
     setModal(a);
   };
 
-  // ── 儲存加密貨幣持倉 ─────────────────────────────────────
+  // ── 儲存加密貨幣持倉（含錯誤處理）──────────────────────────
   // 新增時 value_twd=0，需等更新幣價後才有市值
   const save = async () => {
-    setSaving(true);
-    const amount = parseFloat(form.amount) || 0;
-    const cost   = parseFloat(form.cost)   || 0;
-    const data = {
-      account: "crypto", type: "crypto",
-      name: form.name, coin_id: form.coin_id,
-      shares: amount, cost, cost_total: cost * amount,
-      value_twd: 0, note: form.note,
-    };
-    if (modal === "add") await supabase.from("assets").insert(data);
-    else                 await supabase.from("assets").update(data).eq("id", modal.id);
-    setSaving(false); setModal(null); reload();
+    try {
+      setSaving(true);
+      setError(null);
+      const amount = parseFloat(form.amount) || 0;
+      const cost   = parseFloat(form.cost)   || 0;
+      const data = {
+        account: "crypto", type: "crypto",
+        name: form.name, coin_id: form.coin_id,
+        shares: amount, cost, cost_total: cost * amount,
+        value_twd: 0, note: form.note,
+      };
+      let result;
+      if (modal === "add") result = await supabase.from("assets").insert(data);
+      else                 result = await supabase.from("assets").update(data).eq("id", modal.id);
+
+      if (result.error) throw new Error(result.error.message);
+      setSaving(false); setModal(null); reload();
+    } catch (err) {
+      setSaving(false);
+      setError(err.message);
+      alert(`⚠️ ${err.message || "儲存失敗"}`);
+    }
   };
 
   const del = async id => {
     if (!window.confirm("確定刪除？")) return;
-    await supabase.from("assets").delete().eq("id", id);
-    reload();
+    try {
+      const result = await supabase.from("assets").delete().eq("id", id);
+      if (result.error) throw new Error(result.error.message);
+      reload();
+    } catch (err) {
+      alert(`⚠️ 刪除失敗: ${err.message}`);
+    }
   };
 
-  // ── 一鍵更新幣價（CoinGecko）────────────────────────────
+  // ── 一鍵更新幣價（CoinGecko，含錯誤處理）────────────────
   const refreshPrices = async () => {
-    setFetching(true); setFetchMsg("抓取幣價中…");
-    for (const a of assets.filter(a => a.coin_id)) {
-      const price = await fetchCryptoPrice(a.coin_id);
-      if (price) {
-        await supabase.from("assets").update({ price_twd: price, value_twd: price * (a.shares || 0) }).eq("id", a.id);
-        setFetchMsg(`✅ ${a.name}: NT$${fmt(price)}`);
+    try {
+      setFetching(true);
+      setFetchMsg("抓取幣價中…");
+      setError(null);
+      const cryptosToUpdate = assets.filter(a => a.coin_id);
+      if (cryptosToUpdate.length === 0) {
+        setFetchMsg("ℹ️ 無需更新的貨幣");
+        setTimeout(() => setFetchMsg(""), 2000);
+        setFetching(false);
+        return;
       }
+      for (const a of cryptosToUpdate) {
+        const price = await fetchCryptoPrice(a.coin_id);
+        if (price) {
+          const result = await supabase.from("assets").update({ price_twd: price, value_twd: price * (a.shares || 0) }).eq("id", a.id);
+          if (result.error) throw new Error(result.error.message);
+          setFetchMsg(`✅ ${a.name}: NT$${fmt(price)}`);
+        } else {
+          setFetchMsg(`❌ ${a.name}: 無法取得幣價`);
+        }
+      }
+      setFetchMsg("✅ 更新完成");
+      setTimeout(() => setFetchMsg(""), 3000);
+      reload();
+    } catch (err) {
+      setFetching(false);
+      setFetchMsg("❌ 更新失敗");
+      setError(err.message);
+      alert(`⚠️ 幣價更新失敗: ${err.message}`);
+    } finally {
+      setFetching(false);
     }
-    setFetching(false); setFetchMsg("✅ 更新完成");
-    setTimeout(() => setFetchMsg(""), 3000);
-    reload();
   };
 
   const total = assets.reduce((s, x) => s + x.value_twd, 0);
@@ -94,8 +131,9 @@ export default function CryptoAccount({ assets, reload }) {
 
       {/* 空狀態提示 */}
       {assets.length === 0 && (
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 28, textAlign: "center" }}>
-          <div style={{ color: C.textMuted, fontSize: 13 }}>尚無加密貨幣持倉</div>
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "24px 18px", textAlign: "center" }}>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>₿ 尚無加密貨幣持倉</div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>點擊「＋ 新增」開始記錄你的加密資產</div>
         </div>
       )}
 

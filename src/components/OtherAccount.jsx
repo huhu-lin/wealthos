@@ -20,6 +20,7 @@ export default function OtherAccount({ assets, reload }) {
   const [modal,  setModal]  = useState(null);
   const [form,   setForm]   = useState(emptyOther);
   const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState(null);
 
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -30,22 +31,37 @@ export default function OtherAccount({ assets, reload }) {
   };
 
   const save = async () => {
-    setSaving(true);
-    const data = {
-      account: "other", type: "other",
-      name: form.name,
-      value_twd: parseFloat(form.value_twd) || 0,
-      note: form.note,
-    };
-    if (modal === "add") await supabase.from("assets").insert(data);
-    else                 await supabase.from("assets").update(data).eq("id", modal.id);
-    setSaving(false); setModal(null); reload();
+    try {
+      setSaving(true);
+      setError(null);
+      const data = {
+        account: "other", type: "other",
+        name: form.name,
+        value_twd: parseFloat(form.value_twd) || 0,
+        note: form.note,
+      };
+      let result;
+      if (modal === "add") result = await supabase.from("assets").insert(data);
+      else                 result = await supabase.from("assets").update(data).eq("id", modal.id);
+
+      if (result.error) throw new Error(result.error.message);
+      setSaving(false); setModal(null); reload();
+    } catch (err) {
+      setSaving(false);
+      setError(err.message);
+      alert(`⚠️ ${err.message || "儲存失敗"}`);
+    }
   };
 
   const del = async id => {
     if (!window.confirm("確定刪除？")) return;
-    await supabase.from("assets").delete().eq("id", id);
-    reload();
+    try {
+      const result = await supabase.from("assets").delete().eq("id", id);
+      if (result.error) throw new Error(result.error.message);
+      reload();
+    } catch (err) {
+      alert(`⚠️ 刪除失敗: ${err.message}`);
+    }
   };
 
   const total = assets.reduce((s, x) => s + x.value_twd, 0);
@@ -63,7 +79,22 @@ export default function OtherAccount({ assets, reload }) {
       />
 
       {/* 資產列表 */}
-      {assets.map(a => (
+      {assets.length === 0 ? (
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: "24px 18px",
+          textAlign: "center",
+        }}>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>
+            🏠 尚無其他資產
+          </div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>
+            點擊「＋ 新增」開始記錄其他資產
+          </div>
+        </div>
+      ) : assets.map(a => (
         <div key={a.id} className="wos-row" style={{
           background: C.surface, border: `1px solid ${C.border}`,
           borderLeft: `3px solid ${C.purple}`, borderRadius: 12,

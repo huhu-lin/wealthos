@@ -48,33 +48,51 @@ export default function App() {
   const [usdRate,     setUsdRate]     = useState(31.5);
   const [loading,     setLoading]     = useState(true);
 
-  // ── 資料載入（同時撈所有資料表 + 匯率）──────────────────
-  const load = useCallback(async () => {
-    const [a, l, s, p, rate] = await Promise.all([
-      supabase.from("assets").select("*").order("account"),
-      supabase.from("liabilities").select("*"),
-      supabase.from("monthly_snapshots").select("*").order("date"),
-      supabase.from("pledges").select("*"),
-      fetchUSDTWD(),
-    ]);
-    setAllAssets(a.data   || []);
-    setLiabilities(l.data || []);
-    setSnapshots(s.data   || []);
-    setPledges(p.data     || []);
-    setUsdRate(rate       || 31.5);
-    setLoading(false);
+  // ── 狀態：錯誤處理 ───────────────────────────────────────
+  const [error, setError] = useState(null);
 
-    // ── 每日自動快照（當天尚無快照且有資產時寫入）─────────
-    const today    = new Date().toISOString().slice(0, 10);
-    const existing = s.data?.find(x => x.date === today);
-    if (!existing && (a.data || []).length > 0) {
-      const totalAssets = (a.data || []).reduce((sum, x) => sum + (x.value_twd || 0), 0);
-      const totalLiab   = (l.data || []).reduce((sum, x) => sum + x.value, 0);
-      const net         = totalAssets - totalLiab;
-      const leverage    = net > 0 ? totalAssets / net : 0;
-      await supabase.from("monthly_snapshots").insert({
-        date: today, assets: totalAssets, liabilities: totalLiab, net, leverage,
-      });
+  // ── 資料載入（同時撈所有資料表 + 匯率，含錯誤處理）────────
+  const load = useCallback(async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      const [a, l, s, p, rate] = await Promise.all([
+        supabase.from("assets").select("*").order("account"),
+        supabase.from("liabilities").select("*"),
+        supabase.from("monthly_snapshots").select("*").order("date"),
+        supabase.from("pledges").select("*"),
+        fetchUSDTWD(),
+      ]);
+
+      // 檢查 Supabase 錯誤
+      if (a.error) throw new Error(`資產資料載入失敗: ${a.error.message}`);
+      if (l.error) throw new Error(`負債資料載入失敗: ${l.error.message}`);
+      if (s.error) throw new Error(`快照資料載入失敗: ${s.error.message}`);
+      if (p.error) throw new Error(`質押資料載入失敗: ${p.error.message}`);
+
+      setAllAssets(a.data   || []);
+      setLiabilities(l.data || []);
+      setSnapshots(s.data   || []);
+      setPledges(p.data     || []);
+      setUsdRate(rate       || 31.5);
+
+      // ── 每日自動快照（當天尚無快照且有資產時寫入）─────────
+      const today    = new Date().toISOString().slice(0, 10);
+      const existing = s.data?.find(x => x.date === today);
+      if (!existing && (a.data || []).length > 0) {
+        const totalAssets = (a.data || []).reduce((sum, x) => sum + (x.value_twd || 0), 0);
+        const totalLiab   = (l.data || []).reduce((sum, x) => sum + x.value, 0);
+        const net         = totalAssets - totalLiab;
+        const leverage    = net > 0 ? totalAssets / net : 0;
+        await supabase.from("monthly_snapshots").insert({
+          date: today, assets: totalAssets, liabilities: totalLiab, net, leverage,
+        });
+      }
+    } catch (err) {
+      console.error("載入失敗:", err);
+      setError(err.message || "資料載入失敗，請檢查網路連線");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -90,8 +108,8 @@ export default function App() {
   const totalLiab   = liabilities.reduce((s, x) => s + x.value, 0);
   const netWorth    = totalAssets - totalLiab;
 
-  // ── 載入中畫面 ───────────────────────────────────────────
-  if (loading) {
+  // ── 載入中或錯誤畫面 ──────────────────────────────────────
+  if (loading || error) {
     return (
       <>
         <GlobalStyles />
@@ -100,19 +118,68 @@ export default function App() {
           display: "flex", alignItems: "center", justifyContent: "center",
           flexDirection: "column", gap: 20,
         }}>
-          <div style={{
-            width: 52, height: 52,
-            background: `linear-gradient(135deg, ${C.accent}, ${C.blue})`,
-            borderRadius: 14,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24,
-            boxShadow: `0 8px 24px ${C.accent}40`,
-            animation: "wos-pulse 2s ease infinite",
-          }}>💰</div>
-          <div className="wos-loader" />
-          <div style={{ color: C.textMuted, fontSize: 12, letterSpacing: "0.05em" }}>
-            載入資產資料中…
-          </div>
+          {error ? (
+            // 錯誤狀態
+            <>
+              <div style={{
+                width: 56, height: 56,
+                background: C.red + "20",
+                borderRadius: 14,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 28,
+              }}>⚠️</div>
+              <div style={{ textAlign: "center", maxWidth: 380 }}>
+                <div style={{ color: C.text, fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                  資料載入失敗
+                </div>
+                <div style={{ color: C.textMuted, fontSize: 12, marginBottom: 16, lineHeight: 1.5 }}>
+                  {error}
+                </div>
+                <button
+                  onClick={() => load()}
+                  style={{
+                    background: C.accent,
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 16px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "filter 0.15s",
+                  }}
+                  onMouseEnter={e => e.target.style.filter = "brightness(1.1)"}
+                  onMouseLeave={e => e.target.style.filter = "brightness(1)"}
+                >
+                  重新嘗試
+                </button>
+              </div>
+            </>
+          ) : (
+            // 載入中狀態（改進版本）
+            <>
+              <div style={{
+                width: 56, height: 56,
+                background: `linear-gradient(135deg, ${C.accent}, ${C.blue})`,
+                borderRadius: 14,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 26,
+                boxShadow: `0 8px 24px ${C.accent}40`,
+                animation: "wos-pulse 2s ease infinite",
+              }}>💰</div>
+              <div style={{ position: "relative", width: 48, height: 48 }}>
+                <div className="wos-loader" style={{ width: "100%", height: "100%" }} />
+              </div>
+              <div style={{ textAlign: "center", maxWidth: 240 }}>
+                <div style={{ color: C.text, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                  載入資產資料中
+                </div>
+                <div style={{ color: C.textMuted, fontSize: 11, letterSpacing: "0.05em" }}>
+                  正在連線至 Supabase…
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </>
     );
@@ -128,13 +195,20 @@ export default function App() {
         <div style={{
           background: `linear-gradient(90deg, ${C.surface} 0%, #0a162a 100%)`,
           borderBottom: `1px solid ${C.border}`,
-          padding: "0 24px", height: 64,
+          padding: "0 16px", height: 64,
           display: "flex", justifyContent: "space-between", alignItems: "center",
           position: "sticky", top: 0, zIndex: 100,
           boxShadow: "0 4px 20px rgba(0,0,0,0.35)",
+          gap: 12,
+          flexWrap: "nowrap",
+          minHeight: 64,
+          "@media (max-width: 768px)": {
+            padding: "0 12px",
+            gap: 8,
+          }
         }}>
           {/* Logo + 標題 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 0 }}>
             <div style={{
               width: 38, height: 38,
               background: `linear-gradient(135deg, ${C.accent}, ${C.blue})`,
@@ -142,24 +216,28 @@ export default function App() {
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 18, boxShadow: `0 4px 14px ${C.accent}45`, flexShrink: 0,
             }}>💰</div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>WealthOS</div>
-              <div style={{ color: C.textMuted, fontSize: 10, letterSpacing: "0.04em" }}>個人資產監控系統</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>WealthOS</div>
+              <div style={{ color: C.textMuted, fontSize: 9, letterSpacing: "0.04em", whiteSpace: "nowrap" }}>資產監控</div>
             </div>
           </div>
 
-          {/* 右側：淨值 + 匯率 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ textAlign: "right" }}>
+          {/* 右側：淨值 + 匯率（手機上會縮小） */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexShrink: 0 }}>
+            <div style={{ textAlign: "right", display: "none", "@media (min-width: 768px)": { display: "block" } }}>
               <div style={{ color: C.textMuted, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>NET WORTH</div>
-              <div style={{ color: C.accent, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 18, letterSpacing: "-0.02em" }}>
+              <div style={{ color: C.accent, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 16, letterSpacing: "-0.02em" }}>
                 NT${fmt(netWorth)}
               </div>
             </div>
             <div style={{
-              padding: "5px 12px",
+              padding: "5px 10px",
               background: C.accentDim, border: `1px solid ${C.accent}35`,
-              borderRadius: 20, color: C.textMuted, fontSize: 11, fontFamily: "monospace", whiteSpace: "nowrap",
+              borderRadius: 20, color: C.textMuted, fontSize: 10, fontFamily: "monospace", whiteSpace: "nowrap",
+              "@media (max-width: 480px)": {
+                fontSize: 9,
+                padding: "4px 8px",
+              }
             }}>
               USD {usdRate.toFixed(2)}
             </div>
@@ -167,17 +245,26 @@ export default function App() {
         </div>
 
         {/* ── 主內容區 ─────────────────────────────────────── */}
-        <div style={{ padding: "20px 24px", maxWidth: 1100, margin: "0 auto" }}>
+        <div style={{ padding: "16px 12px", maxWidth: 1100, margin: "0 auto" }}>
 
-          {/* Tab 導覽列 */}
+          {/* Tab 導覽列（手機上可橫向捲動） */}
           <div style={{
-            display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap",
-            paddingBottom: 16, borderBottom: `1px solid ${C.border}`,
+            display: "flex", gap: 6, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${C.border}`,
+            overflowX: "auto", overflowY: "hidden",
+            scrollBehavior: "smooth",
+            WebkitOverflowScrolling: "touch",
+            msOverflowStyle: "none",  // IE 和 Edge 隱藏 scrollbar
+            scrollbarWidth: "none",   // Firefox 隱藏 scrollbar
           }}>
             {TABS.map(t => (
               <TabBtn key={t.id} {...t} active={tab === t.id} onClick={() => setTab(t.id)} />
             ))}
           </div>
+
+          {/* 去除 scrollbar 的 CSS */}
+          <style>{`
+            div::-webkit-scrollbar { display: none; }
+          `}</style>
 
           {/* ── Tab 路由：依 tab 狀態渲染對應頁面元件 ────── */}
           {tab === "overview" && (

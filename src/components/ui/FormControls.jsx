@@ -12,6 +12,7 @@ import { C } from "../../constants/theme";
 // label：欄位標題（選填）
 // value / onChange：受控元件
 // type：預設 "text"，可傳 "number"
+// 行動裝置上 type="number" 會自動啟用 inputMode="decimal" 以優化鍵盤體驗
 export function Inp({ label, value, onChange, placeholder, type = "text" }) {
   return (
     <div>
@@ -22,6 +23,7 @@ export function Inp({ label, value, onChange, placeholder, type = "text" }) {
       )}
       <input
         type={type}
+        inputMode={type === "number" ? "decimal" : undefined}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder || ""}

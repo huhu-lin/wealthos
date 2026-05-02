@@ -30,6 +30,7 @@ export default function TWAccount({ assets, reload }) {
   const [saving,   setSaving]   = useState(false);
   const [fetching, setFetching] = useState(false);  // 股價抓取中
   const [fetchMsg, setFetchMsg] = useState("");     // 股價抓取狀態訊息
+  const [error,    setError]    = useState(null);   // 操作錯誤訊息
 
   // 快速設定單一欄位
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
@@ -57,46 +58,82 @@ export default function TWAccount({ assets, reload }) {
     setModal(a);
   };
 
-  // ── 儲存（新增或更新）───────────────────────────────────
+  // ── 儲存（新增或更新，含錯誤處理）────────────────────────
   const save = async () => {
-    setSaving(true);
-    const shares = parseFloat(form.shares) || 0;
-    const cost   = parseFloat(form.cost)   || 0;
-    const data = {
-      account: "tw", type: form.type, name: form.name, ticker: form.ticker,
-      shares, price: parseFloat(form.price) || 0,
-      cost, cost_total: cost * shares,
-      value_twd: parseFloat(form.value_twd) || 0,
-      target: (parseFloat(form.target) || 0) / 100,
-      leverage_ratio: parseFloat(form.leverage_ratio) || 1,
-      note: form.note,
-    };
-    if (modal === "add") await supabase.from("assets").insert(data);
-    else                 await supabase.from("assets").update(data).eq("id", modal.id);
-    setSaving(false); setModal(null); reload();
+    try {
+      setSaving(true);
+      setError(null);
+      const shares = parseFloat(form.shares) || 0;
+      const cost   = parseFloat(form.cost)   || 0;
+      const data = {
+        account: "tw", type: form.type, name: form.name, ticker: form.ticker,
+        shares, price: parseFloat(form.price) || 0,
+        cost, cost_total: cost * shares,
+        value_twd: parseFloat(form.value_twd) || 0,
+        target: (parseFloat(form.target) || 0) / 100,
+        leverage_ratio: parseFloat(form.leverage_ratio) || 1,
+        note: form.note,
+      };
+      let result;
+      if (modal === "add") result = await supabase.from("assets").insert(data);
+      else                 result = await supabase.from("assets").update(data).eq("id", modal.id);
+
+      if (result.error) throw new Error(result.error.message);
+      setSaving(false); setModal(null); reload();
+    } catch (err) {
+      setSaving(false);
+      setError(err.message || "儲存失敗，請重試");
+      alert(`⚠️ ${err.message || "儲存失敗"}`);
+    }
   };
 
-  // ── 刪除 ─────────────────────────────────────────────────
+  // ── 刪除（含錯誤處理）──────────────────────────────────
   const del = async id => {
     if (!window.confirm("確定刪除？")) return;
-    await supabase.from("assets").delete().eq("id", id);
-    reload();
+    try {
+      const result = await supabase.from("assets").delete().eq("id", id);
+      if (result.error) throw new Error(result.error.message);
+      reload();
+    } catch (err) {
+      alert(`⚠️ 刪除失敗: ${err.message}`);
+    }
   };
 
-  // ── 一鍵更新股價 ─────────────────────────────────────────
+  // ── 一鍵更新股價（含錯誤處理）────────────────────────────
   // 只更新 type=etf 且有 ticker 的資產
   const refreshPrices = async () => {
-    setFetching(true); setFetchMsg("抓取股價中…");
-    for (const a of assets.filter(a => a.ticker && a.type === "etf")) {
-      const price = await fetchTWPrice(a.ticker);
-      if (price) {
-        await supabase.from("assets").update({ price, value_twd: price * (a.shares || 0) }).eq("id", a.id);
-        setFetchMsg(`✅ ${a.ticker}: NT$${price}`);
+    try {
+      setFetching(true);
+      setFetchMsg("抓取股價中…");
+      setError(null);
+      const etfsToUpdate = assets.filter(a => a.ticker && a.type === "etf");
+      if (etfsToUpdate.length === 0) {
+        setFetchMsg("ℹ️ 無需更新的 ETF");
+        setTimeout(() => setFetchMsg(""), 2000);
+        setFetching(false);
+        return;
       }
+      for (const a of etfsToUpdate) {
+        const price = await fetchTWPrice(a.ticker);
+        if (price) {
+          const result = await supabase.from("assets").update({ price, value_twd: price * (a.shares || 0) }).eq("id", a.id);
+          if (result.error) throw new Error(result.error.message);
+          setFetchMsg(`✅ ${a.ticker}: NT$${price}`);
+        } else {
+          setFetchMsg(`❌ ${a.ticker}: 無法取得股價`);
+        }
+      }
+      setFetchMsg("✅ 更新完成");
+      setTimeout(() => setFetchMsg(""), 3000);
+      reload();
+    } catch (err) {
+      setFetching(false);
+      setFetchMsg("❌ 更新失敗");
+      setError(err.message);
+      alert(`⚠️ 股價更新失敗: ${err.message}`);
+    } finally {
+      setFetching(false);
     }
-    setFetching(false); setFetchMsg("✅ 更新完成");
-    setTimeout(() => setFetchMsg(""), 3000);
-    reload();
   };
 
   // ── 資料分組 ─────────────────────────────────────────────
@@ -137,7 +174,22 @@ export default function TWAccount({ assets, reload }) {
         </>}
       />
 
-      {etfs.map(a => {
+      {etfs.length === 0 ? (
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: "24px 18px",
+          textAlign: "center",
+        }}>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>
+            📌 尚無 ETF / 股票
+          </div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>
+            點擊「＋ 新增」開始記錄你的投資
+          </div>
+        </div>
+      ) : etfs.map(a => {
         const acctPct = total > 0 ? a.value_twd / total * 100 : 0;
         const tgtPct  = (a.target || 0) * 100;
         return (
@@ -184,7 +236,22 @@ export default function TWAccount({ assets, reload }) {
         right={<Btn onClick={() => { setForm({ ...emptyTW, type: "cash" }); setModal("add"); }}>＋ 新增</Btn>}
       />
 
-      {cash.map(a => (
+      {cash.length === 0 ? (
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: "24px 18px",
+          textAlign: "center",
+        }}>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>
+            💳 尚無台幣現金記錄
+          </div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>
+            點擊「＋ 新增」新增現金帳戶
+          </div>
+        </div>
+      ) : cash.map(a => (
         <div key={a.id} className="wos-row" style={{
           background: C.surface,
           border: `1px solid ${C.border}`,

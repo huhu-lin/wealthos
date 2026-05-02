@@ -23,6 +23,7 @@ export default function Liabilities({ liabilities, reload }) {
   const [modal,  setModal]  = useState(null);
   const [form,   setForm]   = useState(emptyLiab);
   const [saving, setSaving] = useState(false);
+  const [error,  setError]  = useState(null);
 
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -36,31 +37,51 @@ export default function Liabilities({ liabilities, reload }) {
   };
 
   const save = async () => {
-    setSaving(true);
-    const data = {
-      name: form.name,
-      value:   parseFloat(form.value)   || 0,
-      monthly: parseFloat(form.monthly) || 0,
-      rate:    parseFloat(form.rate)    || 0,
-      due_day: parseInt(form.due_day)   || 0,
-      category: form.category,
-    };
-    if (modal === "add") await supabase.from("liabilities").insert(data);
-    else                 await supabase.from("liabilities").update(data).eq("id", modal.id);
-    setSaving(false); setModal(null); reload();
+    try {
+      setSaving(true);
+      setError(null);
+      const data = {
+        name: form.name,
+        value:   parseFloat(form.value)   || 0,
+        monthly: parseFloat(form.monthly) || 0,
+        rate:    parseFloat(form.rate)    || 0,
+        due_day: parseInt(form.due_day)   || 0,
+        category: form.category,
+      };
+      let result;
+      if (modal === "add") result = await supabase.from("liabilities").insert(data);
+      else                 result = await supabase.from("liabilities").update(data).eq("id", modal.id);
+
+      if (result.error) throw new Error(result.error.message);
+      setSaving(false); setModal(null); reload();
+    } catch (err) {
+      setSaving(false);
+      setError(err.message || "儲存失敗");
+      alert(`⚠️ ${err.message || "儲存失敗"}`);
+    }
   };
 
   const del = async id => {
     if (!window.confirm("確定刪除？")) return;
-    await supabase.from("liabilities").delete().eq("id", id);
-    reload();
+    try {
+      const result = await supabase.from("liabilities").delete().eq("id", id);
+      if (result.error) throw new Error(result.error.message);
+      reload();
+    } catch (err) {
+      alert(`⚠️ 刪除失敗: ${err.message}`);
+    }
   };
 
-  // ── 月還款：直接從餘額扣除月還款金額 ────────────────────
+  // ── 月還款（含錯誤處理）──────────────────────────────────
   const processPayment = async l => {
     if (!window.confirm(`確認本月還款 NT$${fmt(l.monthly)}？`)) return;
-    await supabase.from("liabilities").update({ value: l.value - l.monthly }).eq("id", l.id);
-    reload();
+    try {
+      const result = await supabase.from("liabilities").update({ value: l.value - l.monthly }).eq("id", l.id);
+      if (result.error) throw new Error(result.error.message);
+      reload();
+    } catch (err) {
+      alert(`⚠️ 還款失敗: ${err.message}`);
+    }
   };
 
   const today        = new Date().getDate(); // 今天幾號（用於扣款日預警）
@@ -78,7 +99,22 @@ export default function Liabilities({ liabilities, reload }) {
 
       <SectionHeader title="負債清單" right={<Btn onClick={openAdd} color={C.red}>＋ 新增負債</Btn>} />
 
-      {liabilities.map(l => {
+      {liabilities.length === 0 ? (
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: "24px 18px",
+          textAlign: "center",
+        }}>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>
+            ✨ 目前無任何負債
+          </div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>
+            這很棒！繼續保持
+          </div>
+        </div>
+      ) : liabilities.map(l => {
         // 扣款日預警判斷
         const isDueToday = l.due_day === today;
         const isDueSoon  = Math.abs(l.due_day - today) <= 3 && l.due_day > today;
