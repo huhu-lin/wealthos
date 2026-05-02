@@ -1,0 +1,60 @@
+// ============================================================
+// KPI.jsx — 關鍵指標卡片
+// 顯示單一數字指標，上方有色彩標線 + 角落光暈效果
+// 用法：<KPI label="總資產" value={1234567} color={C.accent} />
+//       <KPI label="匯率" value="31.50" prefix="" color={C.gold} sub="USD/TWD" />
+// ============================================================
+
+import { C, fmt } from "../../constants/theme";
+
+export default function KPI({ label, value, sub, color = C.accent, prefix = "NT$" }) {
+  return (
+    <div
+      className="wos-kpi"
+      style={{
+        background: `linear-gradient(150deg, ${C.surface} 0%, ${C.surface2} 100%)`,
+        border: `1px solid ${C.border}`,
+        borderTop: `2px solid ${color}`,  // 頂部色彩標線，代表該指標類型
+        borderRadius: 14,
+        padding: "16px 18px",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* 右上角光暈裝飾 */}
+      <div style={{
+        position: "absolute", top: 0, right: 0, width: 72, height: 72,
+        background: `radial-gradient(circle at top right, ${color}18, transparent 70%)`,
+        pointerEvents: "none",
+      }} />
+
+      {/* 指標標題（全大寫小字） */}
+      <div style={{
+        color: C.textMuted, fontSize: 10,
+        letterSpacing: "0.1em", textTransform: "uppercase",
+        fontWeight: 600, marginBottom: 8,
+      }}>
+        {label}
+      </div>
+
+      {/* 主要數值（等寬字型） */}
+      <div style={{
+        color,
+        fontSize: 20,
+        fontWeight: 700,
+        fontFamily: "'JetBrains Mono', 'Courier New', monospace",
+        letterSpacing: "-0.02em",
+        lineHeight: 1.2,
+      }}>
+        {prefix}{typeof value === "number" ? fmt(value) : value}
+      </div>
+
+      {/* 副標題說明（選填） */}
+      {sub && (
+        <div style={{ color: C.textMuted, fontSize: 11, marginTop: 6, fontWeight: 500 }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
