@@ -54,6 +54,30 @@ export default async function handler(req) {
     );
   }
 
+  // ── 日期跨度驗證（防止過大查詢） ──────────────────────────
+  try {
+    const startDate = new Date(start);
+    const endDate   = new Date(end);
+    const daysDiff  = (endDate - startDate) / (86400 * 1000);
+    if (daysDiff < 0) {
+      return new Response(
+        JSON.stringify({ error: "start date must be before end date" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (daysDiff > 730) {  // 限制最大 2 年（730 天）
+      return new Response(
+        JSON.stringify({ error: "Date range too large, max 730 days" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: "Invalid date values" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const token = process.env.FINMIND_TOKEN;
   if (!token) {
     console.error("[finmind-price] FINMIND_TOKEN env var not set");
@@ -73,22 +97,33 @@ export default async function handler(req) {
     `&token=${token}`;
 
   try {
-    const upstream = await fetch(upstreamUrl);
-    const json = await upstream.json();
+    // 添加 8 秒 timeout，防止 FinMind 無回應導致 Edge Function 掛起
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-    return new Response(JSON.stringify(json), {
-      status: upstream.status,
-      headers: {
-        "Content-Type": "application/json",
-        // 短暫快取：10 分鐘 stale-while-revalidate，降低對 FinMind 的請求次數
-        "Cache-Control": "public, max-age=600, stale-while-revalidate=300",
-      },
-    });
+    try {
+      const upstream = await fetch(upstreamUrl, { signal: controller.signal });
+      const json = await upstream.json();
+
+      return new Response(JSON.stringify(json), {
+        status: upstream.status,
+        headers: {
+          "Content-Type": "application/json",
+          // 短暫快取：10 分鐘 stale-while-revalidate，降低對 FinMind 的請求次數
+          "Cache-Control": "public, max-age=600, stale-while-revalidate=300",
+        },
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch (err) {
-    console.error("[finmind-price] upstream fetch error:", err);
+    console.error("[finmind-price] upstream fetch error:", err.message);
+    const errorMsg = err.name === 'AbortError'
+      ? "Request timeout"
+      : "Failed to fetch from FinMind";
     return new Response(
-      JSON.stringify({ error: "Failed to fetch from FinMind" }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ error: errorMsg }),
+      { status: err.name === 'AbortError' ? 504 : 502, headers: { "Content-Type": "application/json" } }
     );
   }
 }

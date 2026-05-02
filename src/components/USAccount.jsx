@@ -8,7 +8,7 @@
 //   - 所有台幣換算依傳入的 usdRate 即時計算
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { C, LEVERAGE_MAP, fmt } from "../constants/theme";
 import { fetchUSPrice } from "../utils/priceApi";
@@ -30,6 +30,16 @@ export default function USAccount({ assets, usdRate, reload }) {
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
   const [error,    setError]    = useState(null);
+  const fetchMsgTimer = useRef(null);               // setTimeout 計時器 ref，便於清理
+
+  // 清理 setTimeout 的 useEffect
+  useEffect(() => {
+    return () => {
+      if (fetchMsgTimer.current) {
+        clearTimeout(fetchMsgTimer.current);
+      }
+    };
+  }, []);
 
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -97,6 +107,7 @@ export default function USAccount({ assets, usdRate, reload }) {
   };
 
   // ── 一鍵更新美股股價（含錯誤處理）───────────────────────
+  // 新增：進度顯示 + 延遲防止過快請求
   const refreshPrices = async () => {
     try {
       setFetching(true);
@@ -105,11 +116,20 @@ export default function USAccount({ assets, usdRate, reload }) {
       const etfsToUpdate = assets.filter(a => a.ticker && a.type === "etf");
       if (etfsToUpdate.length === 0) {
         setFetchMsg("ℹ️ 無需更新的 ETF");
-        setTimeout(() => setFetchMsg(""), 2000);
+        if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
+        fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 2000);
         setFetching(false);
         return;
       }
-      for (const a of etfsToUpdate) {
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // 順序執行，每次延遲 50ms（FinMind 的限制較寬鬆）
+      for (let i = 0; i < etfsToUpdate.length; i++) {
+        const a = etfsToUpdate[i];
+        setFetchMsg(`更新中... ${i + 1}/${etfsToUpdate.length} (${a.ticker})`);
+
         const price = await fetchUSPrice(a.ticker);
         if (price) {
           const value_usd = price * (a.shares || 0);
@@ -118,12 +138,24 @@ export default function USAccount({ assets, usdRate, reload }) {
           }).eq("id", a.id);
           if (result.error) throw new Error(result.error.message);
           setFetchMsg(`✅ ${a.ticker}: $${price.toFixed(2)}`);
+          successCount++;
         } else {
           setFetchMsg(`❌ ${a.ticker}: 無法取得股價`);
+          failCount++;
+        }
+
+        // 每個請求之間延遲 50ms
+        if (i < etfsToUpdate.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
       }
-      setFetchMsg("✅ 更新完成");
-      setTimeout(() => setFetchMsg(""), 3000);
+
+      const summary = failCount > 0
+        ? `✅ 成功 ${successCount}/${etfsToUpdate.length}，失敗 ${failCount}`
+        : `✅ 全部更新完成 (${successCount} 筆)`;
+      setFetchMsg(summary);
+      if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
+      fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 3000);
       reload();
     } catch (err) {
       setFetching(false);

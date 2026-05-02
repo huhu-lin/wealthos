@@ -8,6 +8,7 @@
 //   5. 配置圓餅圖
 // ============================================================
 
+import { useMemo } from "react";
 import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -20,39 +21,64 @@ import KPI  from "./ui/KPI";
 
 export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, snapshots, usdRate }) {
 
-  // ── 資產 / 負債計算 ────────────────────────────────────────
-  const twTotal     = twAssets.reduce((s, x) => s + x.value_twd, 0);
-  const usTotal     = usAssets.reduce((s, x) => s + x.value_twd, 0);
-  const cryptoTotal = cryptoAssets.reduce((s, x) => s + x.value_twd, 0);
-  const otherTotal  = otherAssets.reduce((s, x) => s + x.value_twd, 0);
-  const totalAssets = twTotal + usTotal + cryptoTotal + otherTotal;
-  const totalLiab   = liabilities.reduce((s, x) => s + x.value, 0);
-  const netWorth    = totalAssets - totalLiab;
-  const leverage    = netWorth > 0 ? totalAssets / netWorth : 0;
-  const debtRatio   = totalAssets > 0 ? totalLiab / totalAssets : 0;
+  // ── 資產 / 負債計算（useMemo 避免每次 render 重新計算）────────────────────
+  const {
+    twTotal, usTotal, cryptoTotal, otherTotal,
+    totalAssets, totalLiab, netWorth, leverage, debtRatio,
+    actualExposure, actualLeverage,
+    totalCost, totalPnl, totalPnlPct,
+  } = useMemo(() => {
+    const tw = twAssets.reduce((s, x) => s + x.value_twd, 0);
+    const us = usAssets.reduce((s, x) => s + x.value_twd, 0);
+    const crypto = cryptoAssets.reduce((s, x) => s + x.value_twd, 0);
+    const other = otherAssets.reduce((s, x) => s + x.value_twd, 0);
+    const total = tw + us + crypto + other;
+    const liab = liabilities.reduce((s, x) => s + x.value, 0);
+    const net = total - liab;
+    const lev = net > 0 ? total / net : 0;
+    const debt = total > 0 ? liab / total : 0;
 
-  // ── 實際曝險倍率（含 ETF 內含槓桿）────────────────────────
-  const actualExposure = [...twAssets, ...usAssets].reduce(
-    (s, x) => s + (x.value_twd || 0) * (x.leverage_ratio || 1), 0
-  ) + cryptoTotal + otherTotal;
-  const actualLeverage = netWorth > 0 ? actualExposure / netWorth : 0;
+    // 實際曝險倍率（含 ETF 內含槓桿）
+    const exposure = [...twAssets, ...usAssets].reduce(
+      (s, x) => s + (x.value_twd || 0) * (x.leverage_ratio || 1), 0
+    ) + crypto + other;
+    const actLev = net > 0 ? exposure / net : 0;
 
-  // ── 未實現損益計算 ─────────────────────────────────────────
-  const totalCost = [...twAssets, ...usAssets, ...cryptoAssets]
-    .reduce((s, x) => s + (x.cost_total || 0), 0);
-  const totalPnl = [...twAssets, ...usAssets, ...cryptoAssets].reduce((s, x) => {
-    const ct = x.cost_total || (x.cost || 0) * (x.shares || 0);
-    return ct > 0 ? s + (x.value_twd - ct) : s;
-  }, 0);
-  const totalPnlPct = totalCost > 0 ? totalPnl / totalCost * 100 : 0;
+    // 未實現損益
+    const cost = [...twAssets, ...usAssets, ...cryptoAssets]
+      .reduce((s, x) => s + (x.cost_total || 0), 0);
+    const pnl = [...twAssets, ...usAssets, ...cryptoAssets].reduce((s, x) => {
+      const ct = x.cost_total || (x.cost || 0) * (x.shares || 0);
+      return ct > 0 ? s + (x.value_twd - ct) : s;
+    }, 0);
+    const pnlPct = cost > 0 ? pnl / cost * 100 : 0;
 
-  // ── 圓餅圖資料 ─────────────────────────────────────────────
-  const pieData = [
+    return {
+      twTotal: tw,
+      usTotal: us,
+      cryptoTotal: crypto,
+      otherTotal: other,
+      totalAssets: total,
+      totalLiab: liab,
+      netWorth: net,
+      leverage: lev,
+      debtRatio: debt,
+      actualExposure: exposure,
+      actualLeverage: actLev,
+      totalCost: cost,
+      totalPnl: pnl,
+      totalPnlPct: pnlPct,
+    };
+  }, [twAssets, usAssets, cryptoAssets, otherAssets, liabilities]);
+
+  // ── 圓餅圖資料（useMemo 保證穩定的物件參考）─────────────────────────
+  const pieData = useMemo(() => [
     { name: "台股",   value: twTotal },
     { name: "美股",   value: usTotal },
     { name: "加密貨幣", value: cryptoTotal },
     { name: "其他",   value: otherTotal },
-  ].filter(x => x.value > 0);
+  ].filter(x => x.value > 0), [twTotal, usTotal, cryptoTotal, otherTotal]);
+
   const pieColors = [C.accent, C.blue, C.gold, C.purple];
 
   return (

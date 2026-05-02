@@ -9,7 +9,7 @@
 //       所有頁面功能都已拆分至 src/components/ 子元件。
 // ============================================================
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "./supabase";
 import { C, fmt } from "./constants/theme";
 import { fetchUSDTWD } from "./utils/priceApi";
@@ -59,7 +59,8 @@ export default function App() {
       const [a, l, s, p, rate] = await Promise.all([
         supabase.from("assets").select("*").order("account"),
         supabase.from("liabilities").select("*"),
-        supabase.from("monthly_snapshots").select("*").order("date"),
+        // monthly_snapshots 最多撈最近 365 筆，防止資料過多導致性能問題
+        supabase.from("monthly_snapshots").select("*").order("date", { ascending: false }).limit(365),
         supabase.from("pledges").select("*"),
         fetchUSDTWD(),
       ]);
@@ -72,7 +73,8 @@ export default function App() {
 
       setAllAssets(a.data   || []);
       setLiabilities(l.data || []);
-      setSnapshots(s.data   || []);
+      // 由於 Supabase 查詢加了 limit，需在前端按日期升序排列
+      setSnapshots((s.data || []).sort((x, y) => new Date(x.date) - new Date(y.date)));
       setPledges(p.data     || []);
       setUsdRate(rate       || 31.5);
 
@@ -98,15 +100,22 @@ export default function App() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── 資料分組（傳入各子頁面）──────────────────────────────
-  const twAssets     = allAssets.filter(a => a.account === "tw");
-  const usAssets     = allAssets.filter(a => a.account === "us");
-  const cryptoAssets = allAssets.filter(a => a.account === "crypto");
-  const otherAssets  = allAssets.filter(a => a.account === "other");
+  // ── 資料分組（傳入各子頁面，使用 useMemo 避免不必要重新計算）────────
+  const twAssets = useMemo(() => allAssets.filter(a => a.account === "tw"), [allAssets]);
+  const usAssets = useMemo(() => allAssets.filter(a => a.account === "us"), [allAssets]);
+  const cryptoAssets = useMemo(() => allAssets.filter(a => a.account === "crypto"), [allAssets]);
+  const otherAssets = useMemo(() => allAssets.filter(a => a.account === "other"), [allAssets]);
 
-  const totalAssets = allAssets.reduce((s, x) => s + (x.value_twd || 0), 0);
-  const totalLiab   = liabilities.reduce((s, x) => s + x.value, 0);
-  const netWorth    = totalAssets - totalLiab;
+  // 計算財務指標（useMemo 保證只在 allAssets 或 liabilities 改變時重新計算）
+  const { totalAssets, totalLiab, netWorth } = useMemo(() => {
+    const total = allAssets.reduce((s, x) => s + (x.value_twd || 0), 0);
+    const liab = liabilities.reduce((s, x) => s + x.value, 0);
+    return {
+      totalAssets: total,
+      totalLiab: liab,
+      netWorth: total - liab,
+    };
+  }, [allAssets, liabilities]);
 
   // ── 載入中或錯誤畫面 ──────────────────────────────────────
   if (loading || error) {
