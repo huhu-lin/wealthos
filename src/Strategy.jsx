@@ -502,6 +502,36 @@ function BacktestTab() {
     return maxDD;
   }
 
+  function calcAnnualizedStats(equityValues, tradingDays) {
+    if (tradingDays < 2) return { annReturn: 0, annVol: 0, sharpe: 0, winRate: 0 };
+
+    const startVal = equityValues[0];
+    const endVal = equityValues[equityValues.length - 1];
+    const totalReturn = (endVal - startVal) / startVal;
+    const annReturn = Math.pow(1 + totalReturn, 252 / tradingDays) - 1;
+
+    // 計算日報酬與波動率
+    const dailyReturns = [];
+    for (let i = 1; i < equityValues.length; i++) {
+      const ret = (equityValues[i] - equityValues[i-1]) / equityValues[i-1];
+      dailyReturns.push(ret);
+    }
+
+    const avgDailyRet = dailyReturns.reduce((a,b)=>a+b,0) / dailyReturns.length;
+    const variance = dailyReturns.reduce((a,b)=>a+Math.pow(b-avgDailyRet,2),0) / dailyReturns.length;
+    const annVol = Math.sqrt(variance * 252);
+
+    // 夏普比率（假設無風險利率 2% 年化）
+    const riskFreeRate = 0.02;
+    const sharpe = annVol > 0 ? (annReturn - riskFreeRate) / annVol : 0;
+
+    // 勝率：正報酬日數 / 總日數
+    const winDays = dailyReturns.filter(r => r > 0).length;
+    const winRate = winDays / dailyReturns.length * 100;
+
+    return { annReturn, annVol, sharpe, winRate };
+  }
+
   async function runBacktest() {
     setLoading(true); setResult(null);
     const fetchFn = params.is_us ? fetchUSKline : fetchTWKline;
@@ -559,6 +589,14 @@ function BacktestTab() {
     const bmReturn = bmRaw.length ? (bmRaw[bmRaw.length-1].close - bmRaw[0].close) / bmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
+    // 計算統計指標
+    const signalVals = signalEquity.map(e=>e.value);
+    const signalStats = calcAnnualizedStats(signalVals, tradingDays);
+    const periodVals = periodEquity.map(e=>e.value);
+    const periodStats = calcAnnualizedStats(periodVals, tradingDays);
+    const driftVals = driftEquity.map(e=>e.value);
+    const driftStats = calcAnnualizedStats(driftVals, tradingDays);
+
     // 實際回測資訊（ETF 上市時間可能短於使用者設定的天數）
     const actualStart    = raw[0].date;
     const actualEnd      = raw[raw.length - 1].date;
@@ -567,7 +605,7 @@ function BacktestTab() {
     const dataShortfall  = requestedDays - Math.round(tradingDays * 365 / 252); // 換算成約略日曆天
     const isDataShort    = dataShortfall > 90; // 差超過 90 天才警告
 
-    setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort });
+    setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -626,6 +664,16 @@ function BacktestTab() {
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
       <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>三種再平衡策略比較｜布林+KDJ訊號 vs 週期 vs 比例偏移｜<span style={{color:C.blue}}>還原股價（除息/分割調整）</span></div>
+
+      <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
+        <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 正報酬日數%。<strong style={{color:C.gold}}>注意：</strong> KDJ 計算採收盤價高低（非完整燭台），回測不含交易成本與滑點。
+      </Card>
+
+      <Card style={{padding:16, marginBottom:16, background:C.red+"08", border:`1px solid ${C.red}40`}}>
+        <div style={{fontSize:11, color:C.red, marginBottom:10}}>
+          ⚠️ <strong>槓桿ETF風險警示：</strong> 槓桿ETF因日重平衡機制，長期持有會因波動衰減而跑輸原型ETF。本回測假設無交易成本與無滑點，實際績效會低於模擬結果。再平衡策略可緩解但無法完全消除此風險。
+        </div>
+      </Card>
 
       <Card style={{padding:16, marginBottom:16}}>
         <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>基本設定</div>
@@ -687,43 +735,56 @@ function BacktestTab() {
                 pct:`${result.signalReturn>=0?"+":""}${result.signalReturn.toFixed(1)}%`,
                 amt: result.signalReturn/100*params.amount,
                 color:C.accent,
-                sub:`${result.signalMarkers.length} 次再平衡`
+                sub:`${result.signalMarkers.length} 次再平衡`,
+                stats: result.signalStats
               },
               {
                 label:"🔄 週期再平衡",
                 pct:`${result.periodReturn>=0?"+":""}${result.periodReturn.toFixed(1)}%`,
                 amt: result.periodReturn/100*params.amount,
                 color:C.orange,
-                sub:`${result.periodMarkers.length} 次再平衡`
+                sub:`${result.periodMarkers.length} 次再平衡`,
+                stats: result.periodStats
               },
               {
                 label:"📊 比例偏移再平衡",
                 pct:`${result.driftReturn>=0?"+":""}${result.driftReturn.toFixed(1)}%`,
                 amt: result.driftReturn/100*params.amount,
                 color:"#9B6DFF",
-                sub:`${result.driftMarkers.length} 次再平衡`
+                sub:`${result.driftMarkers.length} 次再平衡`,
+                stats: result.driftStats
               },
               {
                 label:"📈 原型ETF買進持有",
                 pct: result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-",
                 amt: result.bmReturn!=null ? result.bmReturn/100*params.amount : null,
                 color:C.blue,
-                sub:""
+                sub:"",
+                stats: null
               },
               {
                 label:"最大回撤(訊號)",
                 pct:`-${result.maxDD.toFixed(1)}%`,
                 amt: -result.maxDD/100*params.amount,
                 color:C.gold,
-                sub:""
+                sub:"",
+                stats: null
               },
-            ].map(({label, pct, amt, color, sub})=>(
+            ].map(({label, pct, amt, color, sub, stats})=>(
               <Card key={label} style={{padding:"12px 14px", textAlign:"center"}}>
                 <div style={{color:C.textMuted, fontSize:11, marginBottom:6}}>{label}</div>
                 <div style={{color, fontWeight:700, fontSize:16}}>{pct}</div>
                 {amt!=null && (
                   <div style={{color, fontSize:12, marginTop:3, fontFamily:"monospace"}}>
                     {amt>=0?"+":"-"}NT${fmt(Math.abs(amt))}
+                  </div>
+                )}
+                {stats && (
+                  <div style={{fontSize:10, color:C.textMuted, marginTop:6, lineHeight:"1.4"}}>
+                    <div>年化: {(stats.annReturn*100).toFixed(1)}%</div>
+                    <div>夏普: {stats.sharpe.toFixed(2)}</div>
+                    <div>波動: {(stats.annVol*100).toFixed(1)}%</div>
+                    <div>勝率: {stats.winRate.toFixed(0)}%</div>
                   </div>
                 )}
                 {sub && <div style={{color:C.textMuted, fontSize:11, marginTop:4}}>{sub}</div>}
