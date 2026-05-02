@@ -1,0 +1,29 @@
+name: Keep Render Warm
+
+# Render 免費方案閒置 15 分鐘後休眠，冷啟動會讓第一次請求失敗
+# 此 workflow 每 14 分鐘 ping 一次，讓 Render 永遠保持熱機狀態
+# GitHub Actions 免費方案每月 2000 分鐘，此 workflow 每月約使用 50 分鐘
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"   # 每 14 分鐘執行一次（比 Render 15 分鐘休眠門檻早）
+  workflow_dispatch:          # 允許手動觸發
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Ping Render kline-api
+        run: |
+          echo "🔥 Pinging Render to prevent cold start..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 60 \
+            "https://wealthos-kline.onrender.com/kline/tw?ticker=0050&days=1")
+          echo "Response status: $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Render is warm and responding"
+          else
+            echo "⚠️ Render returned status $STATUS (may be waking up)"
+          fi

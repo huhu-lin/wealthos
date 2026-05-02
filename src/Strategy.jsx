@@ -61,9 +61,12 @@ async function getKlineFromCache(cacheKey, days) {
   return null;
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 // ─── K 線資料抓取（走 Vercel proxy，避免瀏覽器 CORS 問題）───────────────
 // 架構：瀏覽器 → /api/kline-tw|us（Vercel, 同源）→ Render（server-to-server）
-// Server-to-server 不受 CORS 限制，Vercel proxy 內建重試與逾時處理
+// Vercel Edge Function 有 30s 硬上限，Render 冷啟動超過時會回 504
+// 504 表示「請求已送達並喚醒 Render，但超時」→ 等 5 秒再打一次就能成功
 async function fetchFromProxy(proxyUrl) {
   const res = await fetch(proxyUrl);
   if (!res.ok) throw new Error(`proxy HTTP ${res.status}`);
@@ -461,22 +464,37 @@ function BacktestTab() {
     setLoading(true); setResult(null);
     const fetchFn = params.is_us ? fetchUSKline : fetchTWKline;
 
-    setLoadingMsg(`抓取 ${params.ticker} 還原K線...`);
-    const raw = await fetchFn(params.ticker, params.days);
+    setLoadingMsg(`抓取 ${params.ticker} K線資料...`);
+    let raw = await fetchFn(params.ticker, params.days);
+
+    // Render 冷啟動：Vercel proxy 第一次請求可能 timeout（504）→ 喚醒 Render 後自動重試
+    if (!raw.length) {
+      setLoadingMsg("⏳ 伺服器喚醒中，5 秒後自動重試...");
+      await sleep(5000);
+      setLoadingMsg(`重試抓取 ${params.ticker} K線資料...`);
+      raw = await fetchFn(params.ticker, params.days);
+    }
+
+    if (!raw.length) {
+      setLoading(false);
+      setLoadingMsg("❌ 無法取得資料，請確認股票代號是否正確");
+      return;
+    }
 
     let bmRaw = [];
     if (params.benchmark?.trim()) {
       setLoadingMsg(`抓取 ${params.benchmark} 比較基準...`);
       bmRaw = await fetchFn(params.benchmark, params.days);
+
+      // benchmark 也可能需要喚醒
+      if (!bmRaw.length) {
+        setLoadingMsg("⏳ 等待比較基準資料...");
+        await sleep(3000);
+        bmRaw = await fetchFn(params.benchmark, params.days);
+      }
     }
 
     setLoadingMsg("計算指標與回測...");
-
-    if (!raw.length) {
-      setLoading(false);
-      setLoadingMsg("❌ 無法取得資料，請確認股票代號");
-      return;
-    }
 
     const closes = raw.map(d=>d.close);
     const bb = calcBB(closes);
@@ -564,7 +582,7 @@ function BacktestTab() {
           {p("benchmark","對比原型ETF","text",{placeholder:"如 QQQ / 0050"})}
           {p("amount","初始資金 (NT$)")}
           {p("target","股票佔比（0.5=50%）")}
-          {p("days","回測天數")}
+          {p("days","回測天數（最多 1999）",  "number", {min:30, max:1999})}
         </div>
         <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>訊號再平衡參數</div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
