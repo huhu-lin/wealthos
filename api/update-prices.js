@@ -114,6 +114,31 @@ export default async function handler(req) {
   }
 
   console.log(`[update-prices] 完成！更新 ${results.length} 筆資產`);
+
+  // ── 存每日快照 ────────────────────────────────────────────
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: existing } = await supabase
+      .from('monthly_snapshots').select('id').eq('date', today).single();
+
+    if (!existing) {
+      const { data: latestAssets } = await supabase.from('assets').select('*');
+      const { data: liabilities } = await supabase.from('liabilities').select('*');
+      const totalAssets = (latestAssets || []).reduce((s, x) => s + (x.value_twd || 0), 0);
+      const totalLiab = (liabilities || []).reduce((s, x) => s + x.value, 0);
+      const net = totalAssets - totalLiab;
+      const leverage = net > 0 ? totalAssets / net : 0;
+      await supabase.from('monthly_snapshots').insert({
+        date: today, assets: totalAssets, liabilities: totalLiab, net, leverage
+      });
+      console.log(`[update-prices] 快照已存：${today}, 淨值 NT$${Math.round(net)}`);
+    } else {
+      console.log(`[update-prices] 今日快照已存在，跳過`);
+    }
+  } catch(e) {
+    console.error('[update-prices] 存快照失敗:', e.message);
+  }
+
   return new Response(JSON.stringify({ ok: true, usdRate, results }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' }
