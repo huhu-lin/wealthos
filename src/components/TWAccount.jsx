@@ -7,7 +7,7 @@
 //   - 一鍵更新股價（透過 proxy API → FinMind）
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { C, LEVERAGE_MAP, fmt } from "../constants/theme";
 import { fetchTWPrice } from "../utils/priceApi";
@@ -31,6 +31,16 @@ export default function TWAccount({ assets, reload }) {
   const [fetching, setFetching] = useState(false);  // 股價抓取中
   const [fetchMsg, setFetchMsg] = useState("");     // 股價抓取狀態訊息
   const [error,    setError]    = useState(null);   // 操作錯誤訊息
+  const fetchMsgTimer = useRef(null);               // setTimeout 計時器 ref，便於清理
+
+  // 清理 setTimeout 的 useEffect
+  useEffect(() => {
+    return () => {
+      if (fetchMsgTimer.current) {
+        clearTimeout(fetchMsgTimer.current);
+      }
+    };
+  }, []);
 
   // 快速設定單一欄位
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
@@ -109,7 +119,8 @@ export default function TWAccount({ assets, reload }) {
       const etfsToUpdate = assets.filter(a => a.ticker && a.type === "etf");
       if (etfsToUpdate.length === 0) {
         setFetchMsg("ℹ️ 無需更新的 ETF");
-        setTimeout(() => setFetchMsg(""), 2000);
+        if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
+        fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 2000);
         setFetching(false);
         return;
       }
@@ -124,7 +135,8 @@ export default function TWAccount({ assets, reload }) {
         }
       }
       setFetchMsg("✅ 更新完成");
-      setTimeout(() => setFetchMsg(""), 3000);
+      if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
+      fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 3000);
       reload();
     } catch (err) {
       setFetching(false);

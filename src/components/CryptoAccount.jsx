@@ -6,7 +6,7 @@
 //   - 一鍵更新幣價（CoinGecko 公開 API，不需 token）
 // ============================================================
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { C, fmt } from "../constants/theme";
 import { fetchCryptoPrice } from "../utils/priceApi";
@@ -30,6 +30,16 @@ export default function CryptoAccount({ assets, reload }) {
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
   const [error,    setError]    = useState(null);
+  const fetchMsgTimer = useRef(null);               // setTimeout 計時器 ref，便於清理
+
+  // 清理 setTimeout 的 useEffect
+  useEffect(() => {
+    return () => {
+      if (fetchMsgTimer.current) {
+        clearTimeout(fetchMsgTimer.current);
+      }
+    };
+  }, []);
 
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -78,6 +88,7 @@ export default function CryptoAccount({ assets, reload }) {
   };
 
   // ── 一鍵更新幣價（CoinGecko，含錯誤處理）────────────────
+  // 新增：Rate limit 防護（每次 100ms 延遲，防止超過 CoinGecko 10-30次/分鐘限額）
   const refreshPrices = async () => {
     try {
       setFetching(true);
@@ -86,22 +97,44 @@ export default function CryptoAccount({ assets, reload }) {
       const cryptosToUpdate = assets.filter(a => a.coin_id);
       if (cryptosToUpdate.length === 0) {
         setFetchMsg("ℹ️ 無需更新的貨幣");
-        setTimeout(() => setFetchMsg(""), 2000);
+        if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
+        fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 2000);
         setFetching(false);
         return;
       }
-      for (const a of cryptosToUpdate) {
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // 限流：順序執行，每次延遲 100ms 防止 CoinGecko rate limit
+      // CoinGecko 免費版限額：~10-30次/分鐘，加入延遲確保安全（600ms / 次 = 100 次/分鐘）
+      for (let i = 0; i < cryptosToUpdate.length; i++) {
+        const a = cryptosToUpdate[i];
+        setFetchMsg(`更新中... ${i + 1}/${cryptosToUpdate.length} (${a.name})`);
+
         const price = await fetchCryptoPrice(a.coin_id);
         if (price) {
           const result = await supabase.from("assets").update({ price_twd: price, value_twd: price * (a.shares || 0) }).eq("id", a.id);
           if (result.error) throw new Error(result.error.message);
           setFetchMsg(`✅ ${a.name}: NT$${fmt(price)}`);
+          successCount++;
         } else {
           setFetchMsg(`❌ ${a.name}: 無法取得幣價`);
+          failCount++;
+        }
+
+        // 每個請求之間延遲 100ms，防止 rate limit
+        if (i < cryptosToUpdate.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
-      setFetchMsg("✅ 更新完成");
-      setTimeout(() => setFetchMsg(""), 3000);
+
+      const summary = failCount > 0
+        ? `✅ 成功 ${successCount}/${cryptosToUpdate.length}，失敗 ${failCount}`
+        : `✅ 全部更新完成 (${successCount} 筆)`;
+      setFetchMsg(summary);
+      if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
+      fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 3000);
       reload();
     } catch (err) {
       setFetching(false);
