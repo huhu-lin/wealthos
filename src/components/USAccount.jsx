@@ -29,6 +29,7 @@ export default function USAccount({ assets, usdRate, reload }) {
   const [saving,   setSaving]   = useState(false);
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
+  const [error,    setError]    = useState(null);
 
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -54,48 +55,84 @@ export default function USAccount({ assets, usdRate, reload }) {
     setModal(a);
   };
 
-  // ── 儲存（美元換算台幣後寫入）───────────────────────────
+  // ── 儲存（美元換算台幣後寫入，含錯誤處理）────────────────
   const save = async () => {
-    setSaving(true);
-    const shares    = parseFloat(form.shares)    || 0;
-    const cost      = parseFloat(form.cost)      || 0;
-    const value_usd = parseFloat(form.value_usd) || 0;
-    const data = {
-      account: "us", type: form.type, name: form.name, ticker: form.ticker,
-      shares, price_usd: parseFloat(form.price_usd) || 0,
-      cost, cost_total: cost * shares * usdRate,   // 成本換算台幣
-      value_usd, value_twd: value_usd * usdRate,   // 市值換算台幣
-      target: (parseFloat(form.target) || 0) / 100,
-      leverage_ratio: parseFloat(form.leverage_ratio) || 1,
-      note: form.note,
-    };
-    if (modal === "add") await supabase.from("assets").insert(data);
-    else                 await supabase.from("assets").update(data).eq("id", modal.id);
-    setSaving(false); setModal(null); reload();
+    try {
+      setSaving(true);
+      setError(null);
+      const shares    = parseFloat(form.shares)    || 0;
+      const cost      = parseFloat(form.cost)      || 0;
+      const value_usd = parseFloat(form.value_usd) || 0;
+      const data = {
+        account: "us", type: form.type, name: form.name, ticker: form.ticker,
+        shares, price_usd: parseFloat(form.price_usd) || 0,
+        cost, cost_total: cost * shares * usdRate,   // 成本換算台幣
+        value_usd, value_twd: value_usd * usdRate,   // 市值換算台幣
+        target: (parseFloat(form.target) || 0) / 100,
+        leverage_ratio: parseFloat(form.leverage_ratio) || 1,
+        note: form.note,
+      };
+      let result;
+      if (modal === "add") result = await supabase.from("assets").insert(data);
+      else                 result = await supabase.from("assets").update(data).eq("id", modal.id);
+
+      if (result.error) throw new Error(result.error.message);
+      setSaving(false); setModal(null); reload();
+    } catch (err) {
+      setSaving(false);
+      setError(err.message);
+      alert(`⚠️ ${err.message || "儲存失敗"}`);
+    }
   };
 
   const del = async id => {
     if (!window.confirm("確定刪除？")) return;
-    await supabase.from("assets").delete().eq("id", id);
-    reload();
+    try {
+      const result = await supabase.from("assets").delete().eq("id", id);
+      if (result.error) throw new Error(result.error.message);
+      reload();
+    } catch (err) {
+      alert(`⚠️ 刪除失敗: ${err.message}`);
+    }
   };
 
-  // ── 一鍵更新美股股價 ─────────────────────────────────────
+  // ── 一鍵更新美股股價（含錯誤處理）───────────────────────
   const refreshPrices = async () => {
-    setFetching(true); setFetchMsg("抓取股價中…");
-    for (const a of assets.filter(a => a.ticker && a.type === "etf")) {
-      const price = await fetchUSPrice(a.ticker);
-      if (price) {
-        const value_usd = price * (a.shares || 0);
-        await supabase.from("assets").update({
-          price_usd: price, value_usd, value_twd: value_usd * usdRate,
-        }).eq("id", a.id);
-        setFetchMsg(`✅ ${a.ticker}: $${price.toFixed(2)}`);
+    try {
+      setFetching(true);
+      setFetchMsg("抓取股價中…");
+      setError(null);
+      const etfsToUpdate = assets.filter(a => a.ticker && a.type === "etf");
+      if (etfsToUpdate.length === 0) {
+        setFetchMsg("ℹ️ 無需更新的 ETF");
+        setTimeout(() => setFetchMsg(""), 2000);
+        setFetching(false);
+        return;
       }
+      for (const a of etfsToUpdate) {
+        const price = await fetchUSPrice(a.ticker);
+        if (price) {
+          const value_usd = price * (a.shares || 0);
+          const result = await supabase.from("assets").update({
+            price_usd: price, value_usd, value_twd: value_usd * usdRate,
+          }).eq("id", a.id);
+          if (result.error) throw new Error(result.error.message);
+          setFetchMsg(`✅ ${a.ticker}: $${price.toFixed(2)}`);
+        } else {
+          setFetchMsg(`❌ ${a.ticker}: 無法取得股價`);
+        }
+      }
+      setFetchMsg("✅ 更新完成");
+      setTimeout(() => setFetchMsg(""), 3000);
+      reload();
+    } catch (err) {
+      setFetching(false);
+      setFetchMsg("❌ 更新失敗");
+      setError(err.message);
+      alert(`⚠️ 股價更新失敗: ${err.message}`);
+    } finally {
+      setFetching(false);
     }
-    setFetching(false); setFetchMsg("✅ 更新完成");
-    setTimeout(() => setFetchMsg(""), 3000);
-    reload();
   };
 
   const etfs     = assets.filter(a => a.type === "etf");
@@ -136,7 +173,22 @@ export default function USAccount({ assets, usdRate, reload }) {
         </>}
       />
 
-      {etfs.map(a => {
+      {etfs.length === 0 ? (
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: "24px 18px",
+          textAlign: "center",
+        }}>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>
+            📌 尚無 ETF / 股票
+          </div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>
+            點擊「＋ 新增」開始記錄你的美股投資
+          </div>
+        </div>
+      ) : etfs.map(a => {
         const acctPct = total > 0 ? a.value_twd / total * 100 : 0;
         const tgtPct  = (a.target || 0) * 100;
         return (
@@ -180,7 +232,22 @@ export default function USAccount({ assets, usdRate, reload }) {
         right={<Btn onClick={() => { setForm({ ...emptyUS, type: "cash" }); setModal("add"); }}>＋ 新增</Btn>}
       />
 
-      {cash.map(a => (
+      {cash.length === 0 ? (
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          padding: "24px 18px",
+          textAlign: "center",
+        }}>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>
+            💳 尚無美金現金記錄
+          </div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>
+            點擊「＋ 新增」新增現金帳戶
+          </div>
+        </div>
+      ) : cash.map(a => (
         <div key={a.id} className="wos-row" style={{
           background: C.surface, border: `1px solid ${C.border}`,
           borderLeft: `3px solid ${C.purple}`, borderRadius: 12,

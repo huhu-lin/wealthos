@@ -29,6 +29,7 @@ export default function Pledge({ pledges, reload }) {
   const [saving,   setSaving]   = useState(false);
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState("");
+  const [error,    setError]    = useState(null);
 
   const set = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -45,47 +46,82 @@ export default function Pledge({ pledges, reload }) {
     setModal(p);
   };
 
-  // ── 儲存（新增或更新）───────────────────────────────────
+  // ── 儲存（新增或更新，含錯誤處理）────────────────────────
   const save = async () => {
-    setSaving(true);
-    const shares        = parseFloat(form.shares)        || 0;
-    const price         = parseFloat(form.price)         || 0;
-    const market_value  = shares * price;
-    const borrow_amount = parseFloat(form.borrow_amount) || 0;
-    const warning_ratio = parseFloat(form.warning_ratio) || 160;
-    const data = {
-      name: form.name, ticker: form.ticker,
-      shares, price, market_value,
-      borrow_amount, warning_ratio,
-      note: form.note || "",
-    };
-    if (modal === "add") await supabase.from("pledges").insert(data);
-    else                 await supabase.from("pledges").update(data).eq("id", modal.id);
-    setSaving(false); setModal(null); reload();
+    try {
+      setSaving(true);
+      setError(null);
+      const shares        = parseFloat(form.shares)        || 0;
+      const price         = parseFloat(form.price)         || 0;
+      const market_value  = shares * price;
+      const borrow_amount = parseFloat(form.borrow_amount) || 0;
+      const warning_ratio = parseFloat(form.warning_ratio) || 160;
+      const data = {
+        name: form.name, ticker: form.ticker,
+        shares, price, market_value,
+        borrow_amount, warning_ratio,
+        note: form.note || "",
+      };
+      let result;
+      if (modal === "add") result = await supabase.from("pledges").insert(data);
+      else                 result = await supabase.from("pledges").update(data).eq("id", modal.id);
+
+      if (result.error) throw new Error(result.error.message);
+      setSaving(false); setModal(null); reload();
+    } catch (err) {
+      setSaving(false);
+      setError(err.message);
+      alert(`⚠️ ${err.message || "儲存失敗"}`);
+    }
   };
 
   const del = async id => {
     if (!window.confirm("確定刪除？")) return;
-    await supabase.from("pledges").delete().eq("id", id);
-    reload();
+    try {
+      const result = await supabase.from("pledges").delete().eq("id", id);
+      if (result.error) throw new Error(result.error.message);
+      reload();
+    } catch (err) {
+      alert(`⚠️ 刪除失敗: ${err.message}`);
+    }
   };
 
-  // ── 一鍵更新股價 ─────────────────────────────────────────
+  // ── 一鍵更新股價（含錯誤處理）────────────────────────────
   const refreshPrices = async () => {
-    setFetching(true); setFetchMsg("抓取股價中…");
-    for (const p of pledges) {
-      if (!p.ticker) continue;
-      const price = await fetchTWPrice(p.ticker);
-      if (price) {
-        await supabase.from("pledges").update({
-          price, market_value: price * (p.shares || 0),
-        }).eq("id", p.id);
-        setFetchMsg(`✅ ${p.ticker}: NT$${price}`);
+    try {
+      setFetching(true);
+      setFetchMsg("抓取股價中…");
+      setError(null);
+      const pledgesWithTicker = pledges.filter(p => p.ticker);
+      if (pledgesWithTicker.length === 0) {
+        setFetchMsg("ℹ️ 無需更新的質押");
+        setTimeout(() => setFetchMsg(""), 2000);
+        setFetching(false);
+        return;
       }
+      for (const p of pledgesWithTicker) {
+        const price = await fetchTWPrice(p.ticker);
+        if (price) {
+          const result = await supabase.from("pledges").update({
+            price, market_value: price * (p.shares || 0),
+          }).eq("id", p.id);
+          if (result.error) throw new Error(result.error.message);
+          setFetchMsg(`✅ ${p.ticker}: NT$${price}`);
+        } else {
+          setFetchMsg(`❌ ${p.ticker}: 無法取得股價`);
+        }
+      }
+      setFetchMsg("✅ 更新完成");
+      setTimeout(() => setFetchMsg(""), 3000);
+      reload();
+    } catch (err) {
+      setFetching(false);
+      setFetchMsg("❌ 更新失敗");
+      setError(err.message);
+      alert(`⚠️ 股價更新失敗: ${err.message}`);
+    } finally {
+      setFetching(false);
     }
-    setFetching(false); setFetchMsg("✅ 更新完成");
-    setTimeout(() => setFetchMsg(""), 3000);
-    reload();
   };
 
   // ── 整戶合計計算 ─────────────────────────────────────────
@@ -154,7 +190,8 @@ export default function Pledge({ pledges, reload }) {
       {/* 空狀態 */}
       {pledges.length === 0 && (
         <Card style={{ padding: 28, textAlign: "center" }}>
-          <div style={{ color: C.textMuted }}>尚無質押記錄</div>
+          <div style={{ color: C.textMuted, fontSize: 12 }}>🔒 尚無質押記錄</div>
+          <div style={{ color: C.textDim, fontSize: 11, marginTop: 4 }}>點擊「＋ 新增質押」開始記錄</div>
         </Card>
       )}
 
