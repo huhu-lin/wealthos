@@ -15,15 +15,12 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - name: Ping Render kline-api health endpoint
+      - name: Pre-warm Render kline endpoints
         run: |
-          echo "🔥 Pinging Render to prevent cold start..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 \
-            "https://wealthos-kline.onrender.com/health")
-          echo "Response status: $STATUS"
-          if [ "$STATUS" = "200" ]; then
-            echo "✅ Render is warm and responding"
-          else
-            echo "⚠️ Render returned status $STATUS (may be waking up)"
-          fi
+          echo "Pinging health..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://wealthos-kline.onrender.com/health")
+          echo "Health: $STATUS"
+          echo "Pre-warming yfinance with common tickers..."
+          curl -s --max-time 20 "https://wealthos-kline.onrender.com/kline/us?ticker=QQQ&days=30" > /dev/null || true
+          curl -s --max-time 20 "https://wealthos-kline.onrender.com/kline/tw?ticker=0050&days=30" > /dev/null || true
+          echo "Warm-up complete"

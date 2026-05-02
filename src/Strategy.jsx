@@ -88,7 +88,10 @@ function filterByDays(data, days) {
   if (!data?.length) return data || [];
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const y = cutoff.getFullYear();
+  const m = String(cutoff.getMonth() + 1).padStart(2, '0');
+  const d = String(cutoff.getDate()).padStart(2, '0');
+  const cutoffStr = `${y}-${m}-${d}`;
   return data.filter(d => d.date >= cutoffStr);
 }
 
@@ -132,7 +135,7 @@ async function pollKlineCache(cacheKey, bucketedDays, actualDays, onProgress) {
   while (Date.now() - start < maxMs) {
     await sleep(intervalMs);
     const elapsed = Math.round((Date.now() - start) / 1000);
-    onProgress(`⏳ 等待 Render 準備資料... ${elapsed}s / 120s`);
+    onProgress(`⏳ 等待 Render 準備資料... ${elapsed}s / ${Math.round(maxMs/1000)}s`);
 
     const cached = await getKlineFromCache(cacheKey, bucketedDays);
     if (cached) {
@@ -141,7 +144,7 @@ async function pollKlineCache(cacheKey, bucketedDays, actualDays, onProgress) {
     }
   }
 
-  console.warn(`[poll timeout] ${cacheKey} 120 秒內未取得資料`);
+  console.warn(`[poll timeout] ${cacheKey} ${Math.round(maxMs/1000)} 秒內未取得資料`);
   return null;
 }
 
@@ -533,6 +536,7 @@ function BacktestTab() {
   }
 
   async function runBacktest() {
+    if (loading) return;
     setLoading(true); setResult(null);
     const fetchFn = params.is_us ? fetchUSKline : fetchTWKline;
     const getCacheKey = (ticker) => params.is_us ? ticker.toUpperCase() : `${ticker.toUpperCase()}_TW`;
@@ -571,6 +575,14 @@ function BacktestTab() {
 
     setLoadingMsg("計算指標與回測...");
 
+    // 實際回測資訊（ETF 上市時間可能短於使用者設定的天數）
+    const tradingDays    = raw.length;
+    const actualStart    = raw[0].date;
+    const actualEnd      = raw[raw.length - 1].date;
+    const requestedDays  = params.days;
+    const dataShortfall  = requestedDays - Math.round(tradingDays * 365 / 252); // 換算成約略日曆天
+    const isDataShort    = dataShortfall > 90; // 差超過 90 天才警告
+
     const closes = raw.map(d=>d.close);
     const bb = calcBB(closes);
     const kdj = calcKDJ(closes);
@@ -596,14 +608,6 @@ function BacktestTab() {
     const periodStats = calcAnnualizedStats(periodVals, tradingDays);
     const driftVals = driftEquity.map(e=>e.value);
     const driftStats = calcAnnualizedStats(driftVals, tradingDays);
-
-    // 實際回測資訊（ETF 上市時間可能短於使用者設定的天數）
-    const actualStart    = raw[0].date;
-    const actualEnd      = raw[raw.length - 1].date;
-    const tradingDays    = raw.length;
-    const requestedDays  = params.days;
-    const dataShortfall  = requestedDays - Math.round(tradingDays * 365 / 252); // 換算成約略日曆天
-    const isDataShort    = dataShortfall > 90; // 差超過 90 天才警告
 
     setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats });
     setLoadingMsg("");
