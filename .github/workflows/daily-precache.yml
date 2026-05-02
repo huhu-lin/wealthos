@@ -15,6 +15,21 @@ jobs:
     timeout-minutes: 25
 
     steps:
+      - name: Cleanup old cache (keep last 3 days only)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          # 刪除 3 天前的快取，避免 Supabase Free 500MB 爆掉
+          # 保留最近 3 天：今天 + 昨天 + 前天（避免時區邊界問題）
+          CUTOFF=$(date -d "3 days ago" +%Y-%m-%d)
+          echo "刪除 $CUTOFF 之前的快取..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            "${SUPABASE_URL}/rest/v1/kline_cache?cached_date=lt.${CUTOFF}" \
+            -H "apikey: ${SUPABASE_SERVICE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}")
+          echo "清理完成，HTTP $STATUS"
+
       - name: Pre-cache Taiwan ETFs
         run: |
           BASE="https://wealthos-kline.onrender.com"
