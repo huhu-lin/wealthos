@@ -8,12 +8,21 @@ import os, json
 
 app = FastAPI()
 
-# ── CORS（允許你的 Vercel 前端呼叫）─────────────────────────
+# ── CORS（只允許 Vercel 前端呼叫）───────────────────────────
+# 從環境變數讀取，Railway 部署請在環境變數設定 ALLOWED_ORIGINS
+# 格式：逗號分隔，例如 "https://wealthos.vercel.app,https://wealthos-git-main.vercel.app"
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = (
+    [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    if _raw_origins
+    else ["http://localhost:5173"]   # 本機開發 fallback
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # 上線後改成你的 Vercel domain
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET"],           # kline API 只需要 GET
+    allow_headers=["Content-Type"],
 )
 
 # ── Supabase 快取 ────────────────────────────────────────────

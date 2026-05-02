@@ -37,9 +37,6 @@ const LEVERAGE_MAP = {
   "QLD": 2, "TQQQ": 3, "SOXL": 3, "UPRO": 3, "SPXL": 3, "TECL": 3, "SSO": 2, "UDOW": 3,
 };
 
-// ── API Token ─────────────────────────────────────────────
-const FINMIND_TOKEN = "REDACTED_FINMIND_TOKEN";
-
 // ── 工具函數 ──────────────────────────────────────────────
 const fmt = (n, d = 0) => Math.abs(n).toLocaleString("zh-TW", { maximumFractionDigits: d });
 const fmtM = (n) => n >= 1000000 ? `${(n / 1000000).toFixed(2)}M` : `${(n / 1000).toFixed(0)}K`;
@@ -53,12 +50,12 @@ const TT = {
   cursor: { stroke: "#2A4A70", strokeWidth: 1 },
 };
 
-// ── 價格抓取 ──────────────────────────────────────────────
+// ── 價格抓取（透過 server-side proxy，token 不暴露在前端）──
 async function fetchTWPrice(stockId) {
   try {
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stockId}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
+    const url = `/api/finmind-price?dataset=TaiwanStockPrice&data_id=${stockId}&start=${start}&end=${end}`;
     const res = await fetch(url);
     const json = await res.json();
     if (json.data?.length > 0) return json.data[json.data.length - 1].close;
@@ -70,7 +67,7 @@ async function fetchUSPrice(ticker) {
   try {
     const end = new Date().toISOString().slice(0, 10);
     const start = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=USStockPrice&data_id=${ticker}&start_date=${start}&end_date=${end}&token=${FINMIND_TOKEN}`;
+    const url = `/api/finmind-price?dataset=USStockPrice&data_id=${ticker}&start=${start}&end=${end}`;
     const res = await fetch(url);
     const json = await res.json();
     if (json.data?.length > 0) return json.data[json.data.length - 1].Close;
