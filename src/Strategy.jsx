@@ -676,6 +676,25 @@ function BacktestTab() {
         <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 正報酬日數%。<strong style={{color:C.gold}}>注意：</strong> KDJ 計算採收盤價高低（非完整燭台），回測不含交易成本與滑點。
       </Card>
 
+      <Card style={{padding:12, marginBottom:16, background:C.surface2, border:`1px solid ${C.border}`, fontSize:11, lineHeight:"1.7"}}>
+        <div style={{display:"flex", alignItems:"center", gap:6, marginBottom:8}}>
+          <span style={{color:C.blue, fontWeight:700, fontSize:12}}>🗓 資料說明</span>
+          <span style={{color:C.textMuted}}>—</span>
+          <span style={{color:C.textMuted}}>使用各市場昨日收盤還原股價（除息/分割調整）</span>
+        </div>
+        <div style={{marginBottom:6}}>
+          <span style={{color:C.accent, fontWeight:600}}>⚡ 預載標的（秒出）｜台股：</span>
+          <span style={{color:C.text}}>0050、0056、006208、00878、00646、00631L、00692、00757</span>
+        </div>
+        <div style={{marginBottom:6}}>
+          <span style={{color:C.accent, fontWeight:600}}>⚡ 預載標的（秒出）｜美股：</span>
+          <span style={{color:C.text}}>SPY、QQQ、IWM、VOO、VTI、QLD、TQQQ、SSO、UPRO、SOXL、TECL、FNGU</span>
+        </div>
+        <div style={{color:C.textMuted}}>
+          ⏳ <strong style={{color:C.gold}}>非預載標的</strong> 首次查詢需等待 30～90 秒（系統即時抓取），之後當日再查即秒出。
+        </div>
+      </Card>
+
       <Card style={{padding:16, marginBottom:16, background:C.red+"08", border:`1px solid ${C.red}40`}}>
         <div style={{fontSize:11, color:C.red, marginBottom:10}}>
           ⚠️ <strong>槓桿ETF風險警示：</strong> 槓桿ETF因日重平衡機制，長期持有會因波動衰減而跑輸原型ETF。本回測假設無交易成本與無滑點，實際績效會低於模擬結果。再平衡策略可緩解但無法完全消除此風險。
