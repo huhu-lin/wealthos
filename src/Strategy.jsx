@@ -43,19 +43,22 @@ function Input({value, onChange, placeholder, style={}, type="text"}) {
 }
 
 // ─── 資料抓取（先查 Supabase 快取，沒有才打 Render）────────
+// 查詢邏輯：找「今天已快取、且 days >= 所需 bucket」的最小一筆
+// 例：已快取 3650 天，用戶改查 730 天 → 直接回傳 3650 天資料，再由 filterByDays 精準切
 async function getKlineFromCache(cacheKey, days) {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const { data } = await supabase
       .from("kline_cache")
-      .select("data")
+      .select("data, days")
       .eq("ticker", cacheKey)
-      .eq("days", days)
       .eq("cached_date", today)
-      .single();
-    if (data?.data) {
-      console.log(`[cache hit] ${cacheKey}`);
-      return JSON.parse(data.data);
+      .gte("days", days)          // 接受任何 >= 所需 bucket 的快取
+      .order("days", { ascending: true })  // 優先用最小的（避免抓太多）
+      .limit(1);
+    if (data?.[0]?.data) {
+      console.log(`[cache hit] ${cacheKey} (cached=${data[0].days}d, needed=${days}d)`);
+      return JSON.parse(data[0].data);
     }
   } catch {}
   return null;
