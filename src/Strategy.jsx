@@ -63,6 +63,14 @@ async function getKlineFromCache(cacheKey, days) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// ─── Days Bucket：把天數對應到最近的 cache bucket ────────────
+// 相同 bucket 內的不同天數共用同一份快取，只需抓一次
+// e.g. 4900/5000/5100 → 全部對應 5200，抓過一次後都秒出
+const DAY_BUCKETS = [365, 730, 1095, 1460, 2190, 2920, 5200];
+function bucketDays(days) {
+  return DAY_BUCKETS.find(b => b >= days) ?? 5200;
+}
+
 // ─── K 線資料抓取（走 Vercel proxy，避免瀏覽器 CORS 問題）───────────────
 // 架構：瀏覽器 → /api/kline-tw|us（Vercel, 同源）→ Render（server-to-server）
 // Vercel Edge Function 有 30s 硬上限，Render 冷啟動超過時會回 504
@@ -74,15 +82,24 @@ async function fetchFromProxy(proxyUrl) {
   return json.data || [];
 }
 
-async function fetchTWKline(ticker, days=720) {
-  // 1. 先查 Supabase 快取（今日有快取直接用，不打 Render）
-  const cacheKey = `${ticker.toUpperCase()}_TW`;
-  const cached = await getKlineFromCache(cacheKey, days);
-  if (cached) return cached;
+// 按日期過濾資料，保留最近 N 個日曆天（回測精準用實際日期判斷）
+function filterByDays(data, days) {
+  if (!data?.length) return data || [];
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return data.filter(d => d.date >= cutoffStr);
+}
 
-  // 2. 沒有快取 → 走 Vercel proxy（同源，無 CORS 問題）→ Render
+async function fetchTWKline(ticker, days=720) {
+  const bd = bucketDays(days);           // 用大 bucket 查快取（命中率高）
+  const cacheKey = `${ticker.toUpperCase()}_TW`;
+  const cached = await getKlineFromCache(cacheKey, bd);
+  if (cached) return filterByDays(cached, days); // 命中後精準切出所需天數
+
   try {
-    return await fetchFromProxy(`/api/kline-tw?ticker=${encodeURIComponent(ticker)}&days=${days}`);
+    const data = await fetchFromProxy(`/api/kline-tw?ticker=${encodeURIComponent(ticker)}&days=${bd}`);
+    return filterByDays(data, days);
   } catch(e) {
     console.error(`[fetchTWKline] 失敗:`, e);
     return [];
@@ -90,13 +107,13 @@ async function fetchTWKline(ticker, days=720) {
 }
 
 async function fetchUSKline(ticker, days=720) {
-  // 1. 先查 Supabase 快取
-  const cached = await getKlineFromCache(ticker.toUpperCase(), days);
-  if (cached) return cached;
+  const bd = bucketDays(days);
+  const cached = await getKlineFromCache(ticker.toUpperCase(), bd);
+  if (cached) return filterByDays(cached, days);
 
-  // 2. 沒有快取 → 走 Vercel proxy（同源，無 CORS 問題）→ Render
   try {
-    return await fetchFromProxy(`/api/kline-us?ticker=${encodeURIComponent(ticker)}&days=${days}`);
+    const data = await fetchFromProxy(`/api/kline-us?ticker=${encodeURIComponent(ticker)}&days=${bd}`);
+    return filterByDays(data, days);
   } catch(e) {
     console.error(`[fetchUSKline] 失敗:`, e);
     return [];
@@ -104,9 +121,11 @@ async function fetchUSKline(ticker, days=720) {
 }
 
 // ─── Trigger-and-Poll：當 proxy 失敗時，輪詢 Supabase 等待 Render 寫入快取 ──
-async function pollKlineCache(cacheKey, days, onProgress) {
-  const maxMs = 120000; // 最多等 120 秒
-  const intervalMs = 5000; // 每 5 秒查一次
+// bucketedDays: 查 Supabase 用的 key（bucket 值）
+// actualDays:   回傳給回測的精準天數（按日期過濾）
+async function pollKlineCache(cacheKey, bucketedDays, actualDays, onProgress) {
+  const maxMs = 120000;
+  const intervalMs = 5000;
   const start = Date.now();
 
   while (Date.now() - start < maxMs) {
@@ -114,10 +133,10 @@ async function pollKlineCache(cacheKey, days, onProgress) {
     const elapsed = Math.round((Date.now() - start) / 1000);
     onProgress(`⏳ 等待 Render 準備資料... ${elapsed}s / 120s`);
 
-    const cached = await getKlineFromCache(cacheKey, days);
+    const cached = await getKlineFromCache(cacheKey, bucketedDays);
     if (cached) {
       console.log(`[poll success] ${cacheKey} 在 ${elapsed}s 後寫入快取`);
-      return cached;
+      return filterByDays(cached, actualDays); // 精準切出所需天數
     }
   }
 
@@ -486,38 +505,37 @@ function BacktestTab() {
     setLoading(true); setResult(null);
     const fetchFn = params.is_us ? fetchUSKline : fetchTWKline;
     const getCacheKey = (ticker) => params.is_us ? ticker.toUpperCase() : `${ticker.toUpperCase()}_TW`;
+    const hasBenchmark = !!params.benchmark?.trim();
 
-    // ─── 抓取主資產 K 線 ───
-    setLoadingMsg(`抓取 ${params.ticker} K線資料...`);
-    let raw = await fetchFn(params.ticker, params.days);
+    // ─── 並行觸發主資產 + benchmark（同時喚醒 Render，縮短等待）───
+    setLoadingMsg("抓取資料中...");
+    const [rawInit, bmRawInit] = await Promise.all([
+      fetchFn(params.ticker, params.days),
+      hasBenchmark ? fetchFn(params.benchmark, params.days) : Promise.resolve([]),
+    ]);
 
-    // 若 proxy 失敗（504 或無資料）→ 改用 Trigger-and-Poll
-    // 原理：504 表示 Render 已被喚醒，只是超過了 Vercel 30s 硬上限
-    // Render 會繼續跑，最終寫入 Supabase cache，我們就輪詢等待
-    if (!raw.length) {
-      setLoadingMsg(`⏳ 伺服器首次抓取中，開始等待 Render 準備資料...`);
-      const cacheKey = getCacheKey(params.ticker);
-      raw = await pollKlineCache(cacheKey, params.days, setLoadingMsg) || [];
+    // ─── 若任一失敗（Render 冷啟動 504）→ 並行 poll 兩者 ───
+    const needPollMain = !rawInit.length;
+    const needPollBm   = hasBenchmark && !bmRawInit.length;
+
+    if (needPollMain || needPollBm) {
+      setLoadingMsg("⏳ Render 首次抓取中，自動等待...");
     }
+
+    const bd = bucketDays(params.days);
+    const [raw, bmRaw] = await Promise.all([
+      needPollMain
+        ? pollKlineCache(getCacheKey(params.ticker), bd, params.days, setLoadingMsg).then(r => r || [])
+        : Promise.resolve(rawInit),
+      needPollBm
+        ? pollKlineCache(getCacheKey(params.benchmark), bd, params.days, () => {}).then(r => r || [])
+        : Promise.resolve(bmRawInit),
+    ]);
 
     if (!raw.length) {
       setLoading(false);
       setLoadingMsg("❌ 無法取得資料，請確認股票代號是否正確");
       return;
-    }
-
-    // ─── 抓取比較基準 K 線 ───
-    let bmRaw = [];
-    if (params.benchmark?.trim()) {
-      setLoadingMsg(`抓取 ${params.benchmark} 比較基準...`);
-      bmRaw = await fetchFn(params.benchmark, params.days);
-
-      // benchmark 也可能需要喚醒，使用同樣的 Trigger-and-Poll 邏輯
-      if (!bmRaw.length) {
-        setLoadingMsg(`⏳ 等待 ${params.benchmark} 資料...`);
-        const bmCacheKey = getCacheKey(params.benchmark);
-        bmRaw = await pollKlineCache(bmCacheKey, params.days, setLoadingMsg) || [];
-      }
     }
 
     setLoadingMsg("計算指標與回測...");
