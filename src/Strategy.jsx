@@ -10,10 +10,6 @@ const C = {
   text:"#E2EAF4", textMuted:"#5A7399",
 };
 
-// ── 改這裡：填入你的 Railway 部署網址 ───────────────────────
-// 部署後長這樣：https://yourapp.railway.app
-const KLINE_API = import.meta.env.VITE_KLINE_API || "https://your-app.railway.app";
-
 const fmt = (n, d=0) => Math.abs(n).toLocaleString("zh-TW", {maximumFractionDigits:d});
 
 function Card({children, style={}}) {
@@ -65,39 +61,14 @@ async function getKlineFromCache(cacheKey, days) {
   return null;
 }
 
-// ─── 等待函數 ────────────────────────────────────────────────
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-// ─── 預熱 Render 伺服器（BacktestTab 掛載時呼叫）──────────────
-// 用 mode:'no-cors' 讓瀏覽器送出請求但不要求 CORS header，
-// 目的只是讓 Render 從休眠中喚醒，不需要拿到任何回應資料
-function warmupRender() {
-  const url = `${KLINE_API}/kline/tw?ticker=0050&days=1`;
-  fetch(url, { mode: "no-cors" }).catch(() => {});
-  console.log("[warmup] 預熱 Render 伺服器...");
-}
-
-// ─── 帶重試的 fetch（處理 Render 免費方案冷啟動問題）─────────
-// Render 免費方案閒置 15 分鐘後休眠，首次請求因 CORS header 尚未就緒而失敗
-// 預熱後仍可能需要幾秒才完全就緒，最多重試 3 次，每次等 5 秒
-async function fetchWithWakeup(url, retries=3, delayMs=5000) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      return json.data || [];
-    } catch(e) {
-      if (attempt < retries) {
-        console.warn(`[fetchWithWakeup] 第 ${attempt+1} 次失敗，等待伺服器喚醒... (${url})`);
-        await sleep(delayMs);
-      } else {
-        console.error(`[fetchWithWakeup] 全部重試失敗`, e);
-        return [];
-      }
-    }
-  }
-  return [];
+// ─── K 線資料抓取（走 Vercel proxy，避免瀏覽器 CORS 問題）───────────────
+// 架構：瀏覽器 → /api/kline-tw|us（Vercel, 同源）→ Render（server-to-server）
+// Server-to-server 不受 CORS 限制，Vercel proxy 內建重試與逾時處理
+async function fetchFromProxy(proxyUrl) {
+  const res = await fetch(proxyUrl);
+  if (!res.ok) throw new Error(`proxy HTTP ${res.status}`);
+  const json = await res.json();
+  return json.data || [];
 }
 
 async function fetchTWKline(ticker, days=720) {
@@ -106,8 +77,13 @@ async function fetchTWKline(ticker, days=720) {
   const cached = await getKlineFromCache(cacheKey, days);
   if (cached) return cached;
 
-  // 2. 沒有快取才打 Render，自動處理冷啟動重試
-  return fetchWithWakeup(`${KLINE_API}/kline/tw?ticker=${ticker}&days=${days}`);
+  // 2. 沒有快取 → 走 Vercel proxy（同源，無 CORS 問題）→ Render
+  try {
+    return await fetchFromProxy(`/api/kline-tw?ticker=${encodeURIComponent(ticker)}&days=${days}`);
+  } catch(e) {
+    console.error(`[fetchTWKline] 失敗:`, e);
+    return [];
+  }
 }
 
 async function fetchUSKline(ticker, days=720) {
@@ -115,8 +91,13 @@ async function fetchUSKline(ticker, days=720) {
   const cached = await getKlineFromCache(ticker.toUpperCase(), days);
   if (cached) return cached;
 
-  // 2. 沒有快取才打 Render，自動處理冷啟動重試
-  return fetchWithWakeup(`${KLINE_API}/kline/us?ticker=${ticker}&days=${days}`);
+  // 2. 沒有快取 → 走 Vercel proxy（同源，無 CORS 問題）→ Render
+  try {
+    return await fetchFromProxy(`/api/kline-us?ticker=${encodeURIComponent(ticker)}&days=${days}`);
+  } catch(e) {
+    console.error(`[fetchUSKline] 失敗:`, e);
+    return [];
+  }
 }
 
 // ─── 指標計算 ────────────────────────────────────────────────
@@ -447,8 +428,6 @@ function BacktestTab() {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
 
-  // 掛載時立即預熱 Render 伺服器，讓 CORS 在使用者按下按鈕前就就緒
-  useEffect(() => { warmupRender(); }, []);
 
   function simRebalance(closes, raw, triggerFn) {
     let cash = params.amount * (1 - params.target);
