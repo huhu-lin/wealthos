@@ -709,7 +709,35 @@ function BacktestTab() {
           {p("benchmark","對比原型ETF","text",{placeholder:"如 QQQ / 0050"})}
           {p("amount","初始資金 (NT$)")}
           {p("target","股票佔比（0.5=50%）")}
-          {p("days","回測天數")}
+          <div>
+            <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>回測天數</div>
+            <Input
+              value={params.days}
+              onChange={e => setParams(v=>({...v, days: Number(e.target.value)}))}
+              style={{width:"100%", boxSizing:"border-box"}}
+            />
+            <div style={{display:"flex", flexWrap:"wrap", gap:4, marginTop:6}}>
+              {[
+                {label:"1年", days:365},
+                {label:"3年", days:1095},
+                {label:"5年", days:1825},
+                {label:"10年", days:3650},
+                {label:"上市至今", days:9999},
+              ].map(({label, days}) => (
+                <button
+                  key={label}
+                  onClick={() => setParams(v=>({...v, days}))}
+                  style={{
+                    background: params.days===days ? C.accent+"30" : C.surface,
+                    color: params.days===days ? C.accent : C.textMuted,
+                    border: `1px solid ${params.days===days ? C.accent+"60" : C.border}`,
+                    borderRadius:5, padding:"2px 8px", fontSize:10,
+                    fontWeight:600, cursor:"pointer",
+                  }}
+                >{label}</button>
+              ))}
+            </div>
+          </div>
         </div>
         <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>訊號再平衡參數</div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>

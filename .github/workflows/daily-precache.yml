@@ -33,7 +33,7 @@ jobs:
       - name: Pre-cache Taiwan ETFs
         run: |
           BASE="https://wealthos-kline.onrender.com"
-          DAYS=3650
+          DAYS=9999
 
           TW_TICKERS=("0050" "0056" "006208" "00878" "00646" "00631L" "00692" "00757")
 
@@ -50,7 +50,7 @@ jobs:
       - name: Pre-cache US ETFs and Leveraged ETFs
         run: |
           BASE="https://wealthos-kline.onrender.com"
-          DAYS=3650
+          DAYS=9999
 
           US_TICKERS=("SPY" "QQQ" "IWM" "VOO" "VTI" "QLD" "TQQQ" "SSO" "UPRO" "SOXL" "TECL" "FNGU")
 
