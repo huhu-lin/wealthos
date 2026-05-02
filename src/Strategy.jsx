@@ -67,7 +67,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // 相同 bucket 內的不同天數共用同一份快取，只需抓一次
 // e.g. 4900/5000/5100 → 全部對應 5200，抓過一次後都秒出
 // Bucket 涵蓋 1 天～全部可用歷史（9999 = 抓所有 yfinance 有的資料）
-const DAY_BUCKETS = [365, 730, 1095, 1460, 2190, 2920, 5200, 7300, 9999];
+const DAY_BUCKETS = [365, 730, 1095, 1460, 2190, 2920, 3650, 5200, 7300, 9999];
 function bucketDays(days) {
   return DAY_BUCKETS.find(b => b >= days) ?? 9999;
 }
@@ -125,7 +125,7 @@ async function fetchUSKline(ticker, days=720) {
 // bucketedDays: 查 Supabase 用的 key（bucket 值）
 // actualDays:   回傳給回測的精準天數（按日期過濾）
 async function pollKlineCache(cacheKey, bucketedDays, actualDays, onProgress) {
-  const maxMs = 120000;
+  const maxMs = 180000;
   const intervalMs = 5000;
   const start = Date.now();
 
