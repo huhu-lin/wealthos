@@ -36,7 +36,7 @@ export default async function handler(req) {
   }
 
   const daysNum = parseInt(days, 10);
-  if (isNaN(daysNum) || daysNum < 1 || daysNum > 3000) {
+  if (isNaN(daysNum) || daysNum < 1 || daysNum > 9999) {
     return new Response(JSON.stringify({ error: "Invalid days param" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },

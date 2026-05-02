@@ -582,7 +582,7 @@ function BacktestTab() {
           {p("benchmark","對比原型ETF","text",{placeholder:"如 QQQ / 0050"})}
           {p("amount","初始資金 (NT$)")}
           {p("target","股票佔比（0.5=50%）")}
-          {p("days","回測天數（最多 1999）",  "number", {min:30, max:1999})}
+          {p("days","回測天數")}
         </div>
         <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>訊號再平衡參數</div>
         <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
