@@ -46,8 +46,32 @@ function Input({value, onChange, placeholder, style={}, type="text"}) {
   );
 }
 
-// ─── 資料抓取（改接 yfinance 後端）─────────────────────────
+// ─── 資料抓取（先查 Supabase 快取，沒有才打 Render）────────
+async function getKlineFromCache(cacheKey, days) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await supabase
+      .from("kline_cache")
+      .select("data")
+      .eq("ticker", cacheKey)
+      .eq("days", days)
+      .eq("cached_date", today)
+      .single();
+    if (data?.data) {
+      console.log(`[cache hit] ${cacheKey}`);
+      return JSON.parse(data.data);
+    }
+  } catch {}
+  return null;
+}
+
 async function fetchTWKline(ticker, days=720) {
+  // 1. 先查 Supabase 快取
+  const cacheKey = `${ticker.toUpperCase()}_TW`;
+  const cached = await getKlineFromCache(cacheKey, days);
+  if (cached) return cached;
+
+  // 2. 沒有快取才打 Render（會喚醒並自動存快取）
   try {
     const res = await fetch(`${KLINE_API}/kline/tw?ticker=${ticker}&days=${days}`);
     const json = await res.json();
@@ -59,6 +83,11 @@ async function fetchTWKline(ticker, days=720) {
 }
 
 async function fetchUSKline(ticker, days=720) {
+  // 1. 先查 Supabase 快取
+  const cached = await getKlineFromCache(ticker.toUpperCase(), days);
+  if (cached) return cached;
+
+  // 2. 沒有快取才打 Render（會喚醒並自動存快取）
   try {
     const res = await fetch(`${KLINE_API}/kline/us?ticker=${ticker}&days=${days}`);
     const json = await res.json();
