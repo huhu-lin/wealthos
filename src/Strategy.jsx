@@ -103,6 +103,28 @@ async function fetchUSKline(ticker, days=720) {
   }
 }
 
+// ─── Trigger-and-Poll：當 proxy 失敗時，輪詢 Supabase 等待 Render 寫入快取 ──
+async function pollKlineCache(cacheKey, days, onProgress) {
+  const maxMs = 120000; // 最多等 120 秒
+  const intervalMs = 5000; // 每 5 秒查一次
+  const start = Date.now();
+
+  while (Date.now() - start < maxMs) {
+    await sleep(intervalMs);
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    onProgress(`⏳ 等待 Render 準備資料... ${elapsed}s / 120s`);
+
+    const cached = await getKlineFromCache(cacheKey, days);
+    if (cached) {
+      console.log(`[poll success] ${cacheKey} 在 ${elapsed}s 後寫入快取`);
+      return cached;
+    }
+  }
+
+  console.warn(`[poll timeout] ${cacheKey} 120 秒內未取得資料`);
+  return null;
+}
+
 // ─── 指標計算 ────────────────────────────────────────────────
 function calcBB(closes, period=20, mult=2) {
   return closes.map((_, i) => {
@@ -463,16 +485,19 @@ function BacktestTab() {
   async function runBacktest() {
     setLoading(true); setResult(null);
     const fetchFn = params.is_us ? fetchUSKline : fetchTWKline;
+    const getCacheKey = (ticker) => params.is_us ? ticker.toUpperCase() : `${ticker.toUpperCase()}_TW`;
 
+    // ─── 抓取主資產 K 線 ───
     setLoadingMsg(`抓取 ${params.ticker} K線資料...`);
     let raw = await fetchFn(params.ticker, params.days);
 
-    // Render 冷啟動：Vercel proxy 第一次請求可能 timeout（504）→ 喚醒 Render 後自動重試
+    // 若 proxy 失敗（504 或無資料）→ 改用 Trigger-and-Poll
+    // 原理：504 表示 Render 已被喚醒，只是超過了 Vercel 30s 硬上限
+    // Render 會繼續跑，最終寫入 Supabase cache，我們就輪詢等待
     if (!raw.length) {
-      setLoadingMsg("⏳ 伺服器喚醒中，5 秒後自動重試...");
-      await sleep(5000);
-      setLoadingMsg(`重試抓取 ${params.ticker} K線資料...`);
-      raw = await fetchFn(params.ticker, params.days);
+      setLoadingMsg(`⏳ 伺服器首次抓取中，開始等待 Render 準備資料...`);
+      const cacheKey = getCacheKey(params.ticker);
+      raw = await pollKlineCache(cacheKey, params.days, setLoadingMsg) || [];
     }
 
     if (!raw.length) {
@@ -481,16 +506,17 @@ function BacktestTab() {
       return;
     }
 
+    // ─── 抓取比較基準 K 線 ───
     let bmRaw = [];
     if (params.benchmark?.trim()) {
       setLoadingMsg(`抓取 ${params.benchmark} 比較基準...`);
       bmRaw = await fetchFn(params.benchmark, params.days);
 
-      // benchmark 也可能需要喚醒
+      // benchmark 也可能需要喚醒，使用同樣的 Trigger-and-Poll 邏輯
       if (!bmRaw.length) {
-        setLoadingMsg("⏳ 等待比較基準資料...");
-        await sleep(3000);
-        bmRaw = await fetchFn(params.benchmark, params.days);
+        setLoadingMsg(`⏳ 等待 ${params.benchmark} 資料...`);
+        const bmCacheKey = getCacheKey(params.benchmark);
+        bmRaw = await pollKlineCache(bmCacheKey, params.days, setLoadingMsg) || [];
       }
     }
 
