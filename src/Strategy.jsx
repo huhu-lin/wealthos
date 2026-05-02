@@ -65,21 +65,40 @@ async function getKlineFromCache(cacheKey, days) {
   return null;
 }
 
+// ─── 等待函數 ────────────────────────────────────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ─── 帶重試的 fetch（處理 Render 免費方案冷啟動問題）─────────
+// Render 免費方案閒置 15 分鐘後休眠，首次請求因 CORS header 尚未就緒而失敗
+// 自動等待 4 秒後重試一次，讓伺服器有時間喚醒
+async function fetchWithWakeup(url, retries=1, delayMs=4000) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      return json.data || [];
+    } catch(e) {
+      if (attempt < retries) {
+        console.warn(`[fetchWithWakeup] 第 ${attempt+1} 次失敗，等待伺服器喚醒... (${url})`);
+        await sleep(delayMs);
+      } else {
+        console.error(`[fetchWithWakeup] 全部重試失敗`, e);
+        return [];
+      }
+    }
+  }
+  return [];
+}
+
 async function fetchTWKline(ticker, days=720) {
-  // 1. 先查 Supabase 快取
+  // 1. 先查 Supabase 快取（今日有快取直接用，不打 Render）
   const cacheKey = `${ticker.toUpperCase()}_TW`;
   const cached = await getKlineFromCache(cacheKey, days);
   if (cached) return cached;
 
-  // 2. 沒有快取才打 Render（會喚醒並自動存快取）
-  try {
-    const res = await fetch(`${KLINE_API}/kline/tw?ticker=${ticker}&days=${days}`);
-    const json = await res.json();
-    return json.data || [];
-  } catch(e) {
-    console.error(`[fetchTWKline] ${ticker}`, e);
-    return [];
-  }
+  // 2. 沒有快取才打 Render，自動處理冷啟動重試
+  return fetchWithWakeup(`${KLINE_API}/kline/tw?ticker=${ticker}&days=${days}`);
 }
 
 async function fetchUSKline(ticker, days=720) {
@@ -87,15 +106,8 @@ async function fetchUSKline(ticker, days=720) {
   const cached = await getKlineFromCache(ticker.toUpperCase(), days);
   if (cached) return cached;
 
-  // 2. 沒有快取才打 Render（會喚醒並自動存快取）
-  try {
-    const res = await fetch(`${KLINE_API}/kline/us?ticker=${ticker}&days=${days}`);
-    const json = await res.json();
-    return json.data || [];
-  } catch(e) {
-    console.error(`[fetchUSKline] ${ticker}`, e);
-    return [];
-  }
+  // 2. 沒有快取才打 Render，自動處理冷啟動重試
+  return fetchWithWakeup(`${KLINE_API}/kline/us?ticker=${ticker}&days=${days}`);
 }
 
 // ─── 指標計算 ────────────────────────────────────────────────
