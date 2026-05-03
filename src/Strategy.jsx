@@ -95,22 +95,6 @@ async function fetchFromProxy(proxyUrl) {
   return json.data || [];
 }
 
-// 清洗 K 線資料：移除單日漲跌超過 40% 的異常點（yfinance 對部分台股 ETF 早期資料有錯誤）
-function sanitizeKline(data, maxChange = 0.4) {
-  if (!data?.length) return data;
-  const result = [data[0]];
-  for (let i = 1; i < data.length; i++) {
-    const prev = result[result.length - 1].close;
-    const curr = data[i].close;
-    if (prev > 0 && Math.abs(curr - prev) / prev > maxChange) {
-      console.warn(`[sanitize] 移除異常價格 ${data[i].date}: ${prev} → ${curr}`);
-      continue;
-    }
-    result.push(data[i]);
-  }
-  return result;
-}
-
 // 按日期過濾資料，保留最近 N 個日曆天（回測精準用實際日期判斷）
 function filterByDays(data, days) {
   if (!data?.length) return data || [];
@@ -612,10 +596,9 @@ function BacktestTab() {
     const bmRawAligned = bmRaw.filter(d => d.date >= alignStart);
 
     // 用對齊後的資料取代原始資料
-    // 清洗異常價格：部分 ETF（如 00631L）在 yfinance 的早期資料有單日暴漲/暴跌異常，
-    // 會讓初始持股數算錯，造成所有策略出現假的尖刺
-    const alignedRaw   = sanitizeKline(rawAligned.length  ? rawAligned  : raw);
-    const alignedBmRaw = sanitizeKline(bmRawAligned.length ? bmRawAligned : bmRaw);
+    // 用對齊後的資料取代原始資料
+    const alignedRaw   = rawAligned.length  ? rawAligned  : raw;
+    const alignedBmRaw = bmRawAligned.length ? bmRawAligned : bmRaw;
 
     // 實際回測資訊（ETF 上市時間可能短於使用者設定的天數）
     const tradingDays    = alignedRaw.length;
