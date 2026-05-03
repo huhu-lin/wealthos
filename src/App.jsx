@@ -25,6 +25,7 @@ import OtherAccount  from "./components/OtherAccount";
 import Liabilities   from "./components/Liabilities";
 import Pledge        from "./components/Pledge";
 import Strategy      from "./Strategy";
+import LoginPage     from "./components/LoginPage";
 
 // ── Tab 清單（id 對應路由、label 顯示名稱、icon 圖示）──────
 const TABS = [
@@ -39,6 +40,23 @@ const TABS = [
 ];
 
 export default function App() {
+  // ── Auth 狀態 ─────────────────────────────────────────────
+  const [session,     setSession]     = useState(undefined); // undefined = 初始化中, null = 未登入
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    // 取得目前 session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthChecked(true);
+    });
+    // 監聽登入/登出狀態變化
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   // ── 狀態 ─────────────────────────────────────────────────
   const [tab,         setTab]         = useState("overview");
   const [allAssets,   setAllAssets]   = useState([]);
@@ -56,6 +74,18 @@ export default function App() {
     try {
       setError(null);
       setLoading(true);
+
+      // ── 自動認領舊資料（user_id IS NULL → 指定給目前登入用戶）
+      // 用於第一次登入時，將既有資料無縫歸屬給帳號擁有者
+      const uid = (await supabase.auth.getUser()).data.user?.id;
+      if (uid) {
+        await Promise.all([
+          supabase.from("assets").update({ user_id: uid }).is("user_id", null),
+          supabase.from("liabilities").update({ user_id: uid }).is("user_id", null),
+          supabase.from("pledges").update({ user_id: uid }).is("user_id", null),
+          supabase.from("monthly_snapshots").update({ user_id: uid }).is("user_id", null),
+        ]);
+      }
       const [a, l, s, p, rate] = await Promise.all([
         supabase.from("assets").select("*").order("account"),
         supabase.from("liabilities").select("*"),
@@ -98,7 +128,8 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // 只在已登入時才載入資料
+  useEffect(() => { if (session) load(); }, [load, session]);
 
   // ── 資料分組（傳入各子頁面，使用 useMemo 避免不必要重新計算）────────
   const twAssets = useMemo(() => allAssets.filter(a => a.account === "tw"), [allAssets]);
@@ -116,6 +147,15 @@ export default function App() {
       netWorth: total - liab,
     };
   }, [allAssets, liabilities]);
+
+  // ── Auth 守衛：未登入或初始化中 ───────────────────────────
+  if (!authChecked) return null; // 等待 session 初始化，避免閃爍
+  if (!session) return <LoginPage />;
+
+  // ── 登出處理 ──────────────────────────────────────────────
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
   // ── 載入中或錯誤畫面 ──────────────────────────────────────
   if (loading || error) {
@@ -231,7 +271,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* 右側：淨值 + 匯率（手機上會縮小） */}
+          {/* 右側：淨值 + 匯率 + 登出 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexShrink: 0 }}>
             <div style={{ textAlign: "right", display: "none", "@media (min-width: 768px)": { display: "block" } }}>
               <div style={{ color: C.textMuted, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>NET WORTH</div>
@@ -243,12 +283,41 @@ export default function App() {
               padding: "5px 10px",
               background: C.accentDim, border: `1px solid ${C.accent}35`,
               borderRadius: 20, color: C.textMuted, fontSize: 10, fontFamily: "monospace", whiteSpace: "nowrap",
-              "@media (max-width: 480px)": {
-                fontSize: 9,
-                padding: "4px 8px",
-              }
             }}>
               USD {usdRate.toFixed(2)}
+            </div>
+            {/* 用戶 email 縮寫 + 登出按鈕 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{
+                width: 30, height: 30,
+                background: C.surface3,
+                border: `1px solid ${C.border}`,
+                borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12, color: C.textMuted, fontWeight: 600,
+                flexShrink: 0,
+              }}>
+                {session.user.email?.[0]?.toUpperCase() || "U"}
+              </div>
+              <button
+                onClick={handleLogout}
+                title="登出"
+                style={{
+                  background: C.surface3,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 8,
+                  padding: "5px 10px",
+                  color: C.textMuted,
+                  fontSize: 11,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "border-color 0.2s, color 0.2s",
+                }}
+                onMouseEnter={e => { e.target.style.borderColor = C.red; e.target.style.color = C.red; }}
+                onMouseLeave={e => { e.target.style.borderColor = C.border; e.target.style.color = C.textMuted; }}
+              >
+                登出
+              </button>
             </div>
           </div>
         </div>
