@@ -6,7 +6,7 @@ name: Daily Pre-cache Popular ETFs
 
 on:
   schedule:
-    - cron: "0 22 * * *"   # 每天 UTC 22:00 = 台灣時間 06:00
+    - cron: "0 22 * * *"   # 每天 UTC 22:00 = 台灣時間 06:00（開盤前取前一日收盤資料）
   workflow_dispatch:        # 允許手動觸發（新增 ticker 後可立即跑一次）
 
 jobs:
