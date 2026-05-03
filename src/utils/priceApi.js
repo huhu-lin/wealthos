@@ -91,10 +91,8 @@ export async function fetchCryptoPrice(coinId) {
 // 新增：5秒 timeout + User-Agent header（Yahoo Finance 要求）
 export async function fetchUSDTWD() {
   try {
-    const url    = `https://query1.finance.yahoo.com/v8/finance/chart/USDTWD=X?interval=1d&range=5d`;
-    const res    = await fetchWithTimeout(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-    }, 5000);
+    // 走 Vercel proxy 避免瀏覽器 CORS 問題
+    const res    = await fetchWithTimeout("/api/usdtwd", {}, 8000);
     const json   = await res.json();
     const closes = json.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
     if (closes?.length > 0) return closes.filter(Boolean).pop();

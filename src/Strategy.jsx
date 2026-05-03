@@ -58,7 +58,7 @@ async function getKlineFromCache(cacheKey, days) {
 
     const { data } = await supabase
       .from("kline_cache")
-      .select("data, days")
+      .select("data, days, cached_date")
       .eq("ticker", cacheKey)
       .in("cached_date", [todayStr, yesterdayStr])  // 今天或昨天都算有效
       .gte("days", days)
@@ -587,22 +587,34 @@ function BacktestTab() {
 
     setLoadingMsg("計算指標與回測...");
 
+    // ── 對齊起始日期：取兩支 ETF 中較晚上市的那天為共同起點 ──────────────
+    // 確保圖表上所有線從同一天出發，比較才有意義
+    const alignStart = bmRaw.length
+      ? (raw[0].date > bmRaw[0].date ? raw[0].date : bmRaw[0].date)
+      : raw[0].date;
+    const rawAligned  = raw.filter(d => d.date >= alignStart);
+    const bmRawAligned = bmRaw.filter(d => d.date >= alignStart);
+
+    // 用對齊後的資料取代原始資料
+    const alignedRaw   = rawAligned.length  ? rawAligned  : raw;
+    const alignedBmRaw = bmRawAligned.length ? bmRawAligned : bmRaw;
+
     // 實際回測資訊（ETF 上市時間可能短於使用者設定的天數）
-    const tradingDays    = raw.length;
-    const actualStart    = raw[0].date;
-    const actualEnd      = raw[raw.length - 1].date;
+    const tradingDays    = alignedRaw.length;
+    const actualStart    = alignedRaw[0].date;
+    const actualEnd      = alignedRaw[alignedRaw.length - 1].date;
     const requestedDays  = params.days;
     const dataShortfall  = requestedDays - Math.round(tradingDays * 365 / 252); // 換算成約略日曆天
     const isDataShort    = dataShortfall > 90; // 差超過 90 天才警告
 
-    const closes = raw.map(d=>d.close);
+    const closes = alignedRaw.map(d=>d.close);
     const bb = calcBB(closes);
     const kdj = calcKDJ(closes);
     const signals = checkSignals(closes, bb, kdj, params.j_entry, params.j_exit);
 
-    const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, raw, (i) => signals.some(s=>s.index===i));
-    const { equity: periodEquity, markers: periodMarkers } = simRebalance(closes, raw, (i) => i % params.period_days === 0);
-    const { equity: driftEquity, markers: driftMarkers } = simRebalance(closes, raw, (i, total, shares, price) => {
+    const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, alignedRaw, (i) => signals.some(s=>s.index===i));
+    const { equity: periodEquity, markers: periodMarkers } = simRebalance(closes, alignedRaw, (i) => i % params.period_days === 0);
+    const { equity: driftEquity, markers: driftMarkers } = simRebalance(closes, alignedRaw, (i, total, shares, price) => {
       const actualPct = (shares * price) / total * 100;
       return Math.abs(actualPct - params.target*100) >= params.drift_pct;
     });
@@ -610,7 +622,7 @@ function BacktestTab() {
     const signalReturn = (signalEquity[signalEquity.length-1].value - params.amount) / params.amount * 100;
     const periodReturn = (periodEquity[periodEquity.length-1].value - params.amount) / params.amount * 100;
     const driftReturn  = (driftEquity[driftEquity.length-1].value - params.amount) / params.amount * 100;
-    const bmReturn = bmRaw.length ? (bmRaw[bmRaw.length-1].close - bmRaw[0].close) / bmRaw[0].close * 100 : null;
+    const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
     // 計算統計指標
@@ -621,7 +633,7 @@ function BacktestTab() {
     const driftVals = driftEquity.map(e=>e.value);
     const driftStats = calcAnnualizedStats(driftVals, tradingDays);
 
-    setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw, bmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats });
+    setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -722,7 +734,7 @@ function BacktestTab() {
             <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>回測天數</div>
             <Input
               value={params.days}
-              onChange={e => setParams(v=>({...v, days: Number(e.target.value)}))}
+              onChange={e => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v > 0) setParams(p=>({...p, days: v})); }}
               style={{width:"100%", boxSizing:"border-box"}}
             />
             <div style={{display:"flex", flexWrap:"wrap", gap:4, marginTop:6}}>
