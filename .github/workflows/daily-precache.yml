@@ -41,7 +41,7 @@ jobs:
           for t in "${TW_TICKERS[@]}"; do
             echo "→ 預載 $t ($DAYS 天)..."
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
-              "$BASE/kline/tw?ticker=$t&days=$DAYS")
+              "$BASE/kline/tw?ticker=$t&days=$DAYS" || echo "timeout")
             echo "  $t → HTTP $STATUS"
             sleep 3
           done
@@ -58,7 +58,7 @@ jobs:
           for t in "${US_TICKERS[@]}"; do
             echo "→ 預載 $t ($DAYS 天)..."
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
-              "$BASE/kline/us?ticker=$t&days=$DAYS")
+              "$BASE/kline/us?ticker=$t&days=$DAYS" || echo "timeout")
             echo "  $t → HTTP $STATUS"
             sleep 3
           done
