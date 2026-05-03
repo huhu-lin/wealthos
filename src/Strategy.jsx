@@ -743,7 +743,7 @@ function BacktestTab() {
                 {label:"3年", days:1095},
                 {label:"5年", days:1825},
                 {label:"10年", days:3650},
-                {label:"上市至今", days:9999},
+                {label:"20年", days:7300},
               ].map(({label, days}) => (
                 <button
                   key={label}
