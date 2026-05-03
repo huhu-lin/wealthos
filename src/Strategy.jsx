@@ -596,8 +596,10 @@ function BacktestTab() {
     const bmRawAligned = bmRaw.filter(d => d.date >= alignStart);
 
     // 用對齊後的資料取代原始資料
-    const alignedRaw   = rawAligned.length  ? rawAligned  : raw;
-    const alignedBmRaw = bmRawAligned.length ? bmRawAligned : bmRaw;
+    // 丟掉第一筆：部分 ETF（如 00631L）在 yfinance 的第一個交易日價格異常，
+    // 會讓初始持股數算錯，造成所有策略從第二天起出現假的暴衝/暴跌
+    const alignedRaw   = (rawAligned.length  ? rawAligned  : raw).slice(1);
+    const alignedBmRaw = (bmRawAligned.length ? bmRawAligned : bmRaw).slice(1);
 
     // 實際回測資訊（ETF 上市時間可能短於使用者設定的天數）
     const tradingDays    = alignedRaw.length;
