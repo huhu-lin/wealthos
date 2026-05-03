@@ -99,18 +99,17 @@ def fetch_kline(ticker_yf: str, days: int) -> list:
                 "low":   round(float(row["Low"].iloc[0] if hasattr(row["Low"], 'iloc') else row["Low"]), 4),
                 "close": round(float(row["Close"].iloc[0] if hasattr(row["Close"], 'iloc') else row["Close"]), 4),
             })
-        # 移除單日跌幅 >80% 的異常點（yfinance 錯誤除息調整記錄）
-        # 已知案例：00631L.TW 在 2015-01-05 出現 -95% 的單日異常，前後兩天價格正常
+        # 偵測價格尺度不連續（>80% 單日跌幅）：如 00631L 在 2015-01-05 因 yfinance
+        # 錯誤除息記錄，導致 2014 年資料（~21 TWD）與 2015 年後（~1 TWD）尺度不符。
+        # 做法：從不連續點開始保留，丟棄之前不相容的資料，確保整段價格序列一致。
         if len(result) > 1:
-            cleaned = [result[0]]
             for i in range(1, len(result)):
-                prev = cleaned[-1]["close"]
+                prev = result[i-1]["close"]
                 curr = result[i]["close"]
                 if prev > 0 and (curr - prev) / prev < -0.80:
-                    print(f"[sanitize] 移除異常點 {result[i]['date']}: {prev} → {curr}")
-                    continue
-                cleaned.append(result[i])
-            result = cleaned
+                    print(f"[sanitize] 價格不連續 {result[i]['date']}: {prev}→{curr}，截取後段資料")
+                    result = result[i:]
+                    break
 
         return result
     except Exception as e:
