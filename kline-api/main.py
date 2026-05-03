@@ -99,6 +99,18 @@ def fetch_kline(ticker_yf: str, days: int) -> list:
                 "low":   round(float(row["Low"].iloc[0] if hasattr(row["Low"], 'iloc') else row["Low"]), 4),
                 "close": round(float(row["Close"].iloc[0] if hasattr(row["Close"], 'iloc') else row["Close"]), 4),
             })
+        # 過濾 yfinance 錯誤的調整記錄（單日跌幅 >80%，不可能是真實市場事件）
+        # 已知案例：00631L.TW 在 2015-01-05 出現 -95% 的資料異常
+        if len(result) > 1:
+            cleaned = [result[0]]
+            for i in range(1, len(result)):
+                prev = cleaned[-1]["close"]
+                curr = result[i]["close"]
+                if prev > 0 and (curr - prev) / prev < -0.80:
+                    print(f"[sanitize] 移除異常資料點 {result[i]['date']}: {prev} → {curr}")
+                    continue
+                cleaned.append(result[i])
+            result = cleaned
         return result
     except Exception as e:
         print(f"[fetch_kline] {ticker_yf} error: {e}")
