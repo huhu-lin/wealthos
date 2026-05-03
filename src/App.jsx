@@ -84,6 +84,7 @@ export default function App() {
           supabase.from("liabilities").update({ user_id: uid }).is("user_id", null),
           supabase.from("pledges").update({ user_id: uid }).is("user_id", null),
           supabase.from("monthly_snapshots").update({ user_id: uid }).is("user_id", null),
+          supabase.from("strategy_tickers").update({ user_id: uid }).is("user_id", null),
         ]);
       }
       const [a, l, s, p, rate] = await Promise.all([
