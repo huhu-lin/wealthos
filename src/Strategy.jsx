@@ -775,9 +775,12 @@ function BacktestTab() {
             {result.isDataShort && (
               <div style={{
                 background: C.gold+"18", border:`1px solid ${C.gold}40`,
-                borderRadius:6, padding:"3px 10px", fontSize:11, color:C.gold,
+                borderRadius:6, padding:"6px 10px", fontSize:11, color:C.gold, lineHeight:1.6,
               }}>
-                ⚠️ ETF 上市時間較短，實際資料少於設定的 {result.requestedDays.toLocaleString()} 天
+                ⚠️ 資料來源（Yahoo Finance）僅提供至 <strong>{result.actualStart}</strong> 的歷史資料，
+                早於此日期的資料不存在（ETF 上市初期或換名後可能有資料缺口）。
+                實際回測 {result.tradingDays.toLocaleString()} 個交易日，
+                少於設定的 {result.requestedDays.toLocaleString()} 天，回測結果仍有效。
               </div>
             )}
           </div>
