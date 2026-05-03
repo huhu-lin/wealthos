@@ -47,17 +47,26 @@ function Input({value, onChange, placeholder, style={}, type="text"}) {
 // 例：已快取 3650 天，用戶改查 730 天 → 直接回傳 3650 天資料，再由 filterByDays 精準切
 async function getKlineFromCache(cacheKey, days) {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    // 接受「今天或昨天 UTC」的快取：
+    // 預載在台灣 06:00（UTC 前一天 22:00）存入，用戶白天使用時 UTC 已是隔天
+    // 接受昨天快取確保 24 小時內都能命中，不受 UTC 日期邊界影響
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const todayStr = now.toISOString().slice(0, 10);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
     const { data } = await supabase
       .from("kline_cache")
       .select("data, days")
       .eq("ticker", cacheKey)
-      .eq("cached_date", today)
-      .gte("days", days)          // 接受任何 >= 所需 bucket 的快取
-      .order("days", { ascending: true })  // 優先用最小的（避免抓太多）
+      .in("cached_date", [todayStr, yesterdayStr])  // 今天或昨天都算有效
+      .gte("days", days)
+      .order("cached_date", { ascending: false })   // 優先用較新的
+      .order("days", { ascending: true })
       .limit(1);
     if (data?.[0]?.data) {
-      console.log(`[cache hit] ${cacheKey} (cached=${data[0].days}d, needed=${days}d)`);
+      console.log(`[cache hit] ${cacheKey} date=${data[0].cached_date} cached=${data[0].days}d needed=${days}d`);
       return JSON.parse(data[0].data);
     }
   } catch {}
