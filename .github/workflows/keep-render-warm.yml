@@ -18,7 +18,7 @@ jobs:
       - name: Pre-warm Render kline endpoints
         run: |
           echo "Pinging health..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://wealthos-kline.onrender.com/health")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://wealthos-kline.onrender.com/health" || echo "timeout")
           echo "Health: $STATUS"
           echo "Pre-warming yfinance with common tickers..."
           curl -s --max-time 60 "https://wealthos-kline.onrender.com/kline/us?ticker=QQQ&days=30" > /dev/null || true
