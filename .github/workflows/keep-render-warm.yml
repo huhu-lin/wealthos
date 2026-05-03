@@ -12,15 +12,15 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
 
     steps:
       - name: Pre-warm Render kline endpoints
         run: |
           echo "Pinging health..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://wealthos-kline.onrender.com/health")
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://wealthos-kline.onrender.com/health")
           echo "Health: $STATUS"
           echo "Pre-warming yfinance with common tickers..."
-          curl -s --max-time 20 "https://wealthos-kline.onrender.com/kline/us?ticker=QQQ&days=30" > /dev/null || true
-          curl -s --max-time 20 "https://wealthos-kline.onrender.com/kline/tw?ticker=0050&days=30" > /dev/null || true
+          curl -s --max-time 60 "https://wealthos-kline.onrender.com/kline/us?ticker=QQQ&days=30" > /dev/null || true
+          curl -s --max-time 60 "https://wealthos-kline.onrender.com/kline/tw?ticker=0050&days=30" > /dev/null || true
           echo "Warm-up complete"
