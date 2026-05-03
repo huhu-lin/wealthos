@@ -717,7 +717,7 @@ function BacktestTab() {
       <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>三種再平衡策略比較｜布林+KDJ訊號 vs 週期 vs 比例偏移｜<span style={{color:C.blue}}>還原股價（除息/分割調整）</span></div>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
-        <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 > 原型ETF買進持有的天數%（無原型資料時 fallback 為正報酬日數%）。<strong style={{color:C.gold}}>注意：</strong> KDJ 計算採收盤價高低（非完整燭台），回測不含交易成本與滑點。
+        <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%（無原型資料時 fallback 為正報酬日數%）。<strong style={{color:C.gold}}>注意：</strong> KDJ 計算採收盤價高低（非完整燭台），回測不含交易成本與滑點。
       </Card>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface2, border:`1px solid ${C.border}`, fontSize:11, lineHeight:"1.7"}}>
