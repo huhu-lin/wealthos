@@ -99,8 +99,8 @@ def fetch_kline(ticker_yf: str, days: int) -> list:
                 "low":   round(float(row["Low"].iloc[0] if hasattr(row["Low"], 'iloc') else row["Low"]), 4),
                 "close": round(float(row["Close"].iloc[0] if hasattr(row["Close"], 'iloc') else row["Close"]), 4),
             })
-        # Step 1：移除單日跌幅 >80% 的異常點（yfinance 錯誤除息調整記錄）
-        # 已知案例：00631L.TW 在 2015-01-05 出現 -95% 的資料異常
+        # 移除單日跌幅 >80% 的異常點（yfinance 錯誤除息調整記錄）
+        # 已知案例：00631L.TW 在 2015-01-05 出現 -95% 的單日異常，前後兩天價格正常
         if len(result) > 1:
             cleaned = [result[0]]
             for i in range(1, len(result)):
@@ -111,18 +111,6 @@ def fetch_kline(ticker_yf: str, days: int) -> list:
                     continue
                 cleaned.append(result[i])
             result = cleaned
-
-        # Step 2：移除異常點後，若相鄰兩點仍有 >50% 斷層，
-        # 代表斷層前後的資料在不同價格軸上（如 00631L 2014 vs 2015+），
-        # 丟棄斷層之前的所有資料，只保留後段一致的價格序列
-        if len(result) > 1:
-            for i in range(1, len(result)):
-                prev = result[i-1]["close"]
-                curr = result[i]["close"]
-                if prev > 0 and abs(curr - prev) / prev > 0.50:
-                    print(f"[sanitize] 價格斷層 {result[i]['date']}: {prev} → {curr}，丟棄前段資料")
-                    result = result[i:]
-                    break
 
         return result
     except Exception as e:
