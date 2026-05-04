@@ -142,9 +142,16 @@ def generate_summary(macro, tw_news, us_news):
             print(f"  [{model}] HTTP {r.status_code}")
             if r.status_code == 200:
                 data = r.json()
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
-                print(f"  ✅ 摘要生成成功（{model}）：{text[:60]}...")
-                return text.strip()
+                parts = data["candidates"][0]["content"]["parts"]
+                # Gemini 2.5 思考模型：parts 可能含 thought=True 的推理段，
+                # 只取非思考部分（實際回應）
+                answer_parts = [p.get("text","") for p in parts if not p.get("thought", False)]
+                text = "".join(answer_parts).strip()
+                if not text:
+                    # fallback：直接取最後一段
+                    text = parts[-1].get("text","").strip()
+                print(f"  ✅ 摘要生成成功（{model}，{len(parts)}段）：{text[:60]}...")
+                return text
             else:
                 # 完整印出錯誤（幫助診斷）
                 print(f"  ⚠️  {model} 錯誤：{r.text[:400]}")
