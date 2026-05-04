@@ -540,11 +540,13 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
             ].map(({ label, val, unit, chg }) => (
               <div key={label} style={{ background:C.bg, borderRadius:6, padding:'6px 8px', textAlign:'center' }}>
                 <div style={{ color:C.textMuted, fontSize:10, marginBottom:2 }}>{label}</div>
-                {val !== null && val !== undefined
+                {val != null
                   ? <div style={{ color:C.text, fontWeight:600, fontSize:12 }}>{val}{unit}</div>
-                  : <div style={{ color: chg >= 0 ? C.accent : C.red, fontWeight:600, fontSize:12 }}>
-                      {chg >= 0 ? '+' : ''}{chg?.toFixed(2)}%
-                    </div>
+                  : chg != null
+                    ? <div style={{ color: chg >= 0 ? C.accent : C.red, fontWeight:600, fontSize:12 }}>
+                        {chg >= 0 ? '+' : ''}{Number(chg).toFixed(2)}%
+                      </div>
+                    : <div style={{ color:C.textMuted, fontSize:12 }}>—</div>
                 }
               </div>
             ))}
