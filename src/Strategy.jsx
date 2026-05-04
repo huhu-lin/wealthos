@@ -233,7 +233,7 @@ function checkSignals(closes, bb, kdj, jEntry=10, jExit=90) {
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
-function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal' }) {
+function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25 }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -351,13 +351,24 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
         </div>
         {lastKDJ && <span style={{color:C.textMuted, fontSize:12}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
-      {total > 0 && (
-        <div style={{display:"flex", gap:16, marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}`, fontSize:12}}>
-          <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
-          <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
-          <span style={{color:C.textMuted}}>建議<span style={{color:diffAmt>0?C.accent:C.red, fontWeight:600}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
-        </div>
-      )}
+      {total > 0 && (() => {
+        const driftNow = Math.abs(actualPct - targetPct);
+        const needsRebal = driftNow >= driftPct;
+        const gapToTrigger = driftPct - driftNow;
+        return (
+          <div style={{display:"flex", gap:16, marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${needsRebal ? C.red+"60" : C.border}`, fontSize:12}}>
+            <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
+            <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
+            {needsRebal ? (
+              // 偏離達閾值：顯示具體操作建議
+              <span style={{color:C.textMuted}}>⚡ 建議再平衡<span style={{color:diffAmt>0?C.accent:C.red, fontWeight:700}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
+            ) : (
+              // 偏離未達閾值：僅顯示距觸發差距，不建議操作
+              <span style={{color:C.textMuted}}>偏離 <span style={{color:C.textMuted, fontWeight:600}}>{driftNow.toFixed(1)}%</span>｜距觸發差 <span style={{color:C.gold, fontWeight:600}}>{gapToTrigger.toFixed(1)}%</span>（閾值 {driftPct}%）</span>
+            )}
+          </div>
+        );
+      })()}
       <div ref={chartRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
       <div style={{display:"flex", gap:12, padding:"6px 0", fontSize:11}}>
         {[["K",C.blue],["D",C.gold],["J",C.accent],["超買/超賣",C.red+"90"]].map(([l,c])=>(
@@ -666,6 +677,7 @@ function MonitorTab({ allAssets }) {
               jEntry={t.j_entry}
               jExit={t.j_exit}
               strategyMode={t.strategy_mode||'signal'}
+              driftPct={25}
             />
           ))}
         </>
@@ -854,16 +866,15 @@ function BacktestTab() {
     const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
-    // P-004：台股加入 0050 含息作為第二基準（還原股價已含息再投資）
+    // P-004：台股加入加權指數（^TWII）作為第二基準
+    // ^TWII 是純加權股價指數（價格指數，不含股息），走 US 端點避免被加上 .TW 後綴
+    // 注意：^TWII 不含股息，每年約低估大盤真實報酬 3~4%，解讀時需留意
     let bm2Raw = [];
     if (!params.is_us) {
-      const bm2Ticker = "0050";
-      if (bm2Ticker.toUpperCase() !== (params.benchmark||"").toUpperCase()) {
-        try {
-          const fetched = await fetchTWKline(bm2Ticker, params.days);
-          bm2Raw = fetched.filter(d => d.date >= alignStart);
-        } catch(e) { bm2Raw = []; }
-      }
+      try {
+        const fetched = await fetchUSKline("^TWII", params.days);
+        bm2Raw = fetched.filter(d => d.date >= alignStart);
+      } catch(e) { bm2Raw = []; }
     }
     const bm2Return = bm2Raw.length ? (bm2Raw[bm2Raw.length-1].close - bm2Raw[0].close) / bm2Raw[0].close * 100 : null;
 
@@ -934,10 +945,10 @@ function BacktestTab() {
       const bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
       bmLine.setData(result.bmRaw.map(d=>({ time:d.date, value:bmInitShares*d.close })));
     }
-    // P-004：0050 含息第二基準線
+    // P-004：加權指數（^TWII）第二基準線
     if (result.bm2Raw?.length) {
       const bm2Shares = params.amount / result.bm2Raw[0].close;
-      const bm2Line = chart.addLineSeries({ color:"#4D9EFF60", lineWidth:1, lineStyle:3, title:"0050含息" });
+      const bm2Line = chart.addLineSeries({ color:"#4D9EFF60", lineWidth:1, lineStyle:3, title:"加權指數" });
       bm2Line.setData(result.bm2Raw.map(d=>({ time:d.date, value:bm2Shares*d.close })));
     }
 
@@ -963,7 +974,7 @@ function BacktestTab() {
   return (
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
-      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>五種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span>｜台股自動加入 <span style={{color:"#4D9EFF", fontWeight:600}}>0050含息(P-004)</span> 雙基準</div>
+      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>五種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span>｜台股自動加入 <span style={{color:"#4D9EFF", fontWeight:600}}>加權指數^TWII(P-004)</span> 雙基準</div>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
         <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%。KDJ 計算採 OHLCV 實際最高/最低價（業界標準）。<strong style={{color:C.gold}}>注意：</strong> 還原股價已含息再投資，回測不含滑點；交易成本可用下方 P-003 開關切換。
@@ -1071,7 +1082,6 @@ function BacktestTab() {
             {label:"月(30天)", days:30},
             {label:"季(90天)", days:90},
             {label:"半年(180天)", days:180},
-            {label:"年(365天)", days:365},
           ].map(({label, days}) => (
             <button
               key={label}
@@ -1209,11 +1219,11 @@ function BacktestTab() {
                 stats: null
               },
               ...(result.bm2Raw?.length ? [{
-                label:"📊 0050 含息 (P-004)",
+                label:"📊 加權指數 (P-004)",
                 pct: result.bm2Return!=null?`${result.bm2Return>=0?"+":""}${result.bm2Return.toFixed(1)}%`:"-",
                 amt: result.bm2Return!=null ? result.bm2Return/100*params.amount : null,
                 color:"#4D9EFF",
-                sub:"0050 買進持有（還原含息）",
+                sub:"^TWII 加權指數（價格，不含股息）",
                 stats: null
               }] : []),
               {
@@ -1247,7 +1257,7 @@ function BacktestTab() {
           </div>
           <Card style={{padding:12, marginBottom:16}}>
             <div style={{display:"flex", gap:16, marginBottom:8, flexWrap:"wrap"}}>
-              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["KDJ買+偏移賣",C.red],["年度再平衡","#00D9C0"],["原型ETF",C.blue],["0050含息","#4D9EFF60"]].map(([l,c])=>(
+              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["KDJ買+偏移賣",C.red],["年度再平衡","#00D9C0"],["原型ETF",C.blue],["加權指數","#4D9EFF60"]].map(([l,c])=>(
                 <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
                   <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
                 </div>
