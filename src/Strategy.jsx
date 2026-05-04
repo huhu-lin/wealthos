@@ -171,13 +171,14 @@ function calcBB(closes, period=20, mult=2) {
   });
 }
 
-function calcKDJ(closes, period=9) {
+// ✅ 修復版：RSV 使用實際 K 線 High/Low，非收盤價序列極值
+// 舊版用 closes.slice() 的 max/min 會壓縮波動幅度，導致 RSV 偏低、J 值訊號偏差
+function calcKDJ(closes, highs, lows, period=9) {
   let k = 50, d = 50;
   return closes.map((_, i) => {
     if (i < period-1) return null;
-    const slice = closes.slice(i-period+1, i+1);
-    const high = Math.max(...slice);
-    const low = Math.min(...slice);
+    const high = Math.max(...highs.slice(i-period+1, i+1));
+    const low  = Math.min(...lows.slice(i-period+1, i+1));
     const rsv = high===low ? 50 : (closes[i]-low)/(high-low)*100;
     k = k*2/3 + rsv/3;
     d = d*2/3 + k/3;
@@ -211,8 +212,10 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 })
     if (kdjInstance.current) { kdjInstance.current.remove(); kdjInstance.current = null; }
 
     const closes = data.map(d => d.close);
+    const highs  = data.map(d => d.high);
+    const lows   = data.map(d => d.low);
     const bb = calcBB(closes);
-    const kdj = calcKDJ(closes);
+    const kdj = calcKDJ(closes, highs, lows);
     const signals = checkSignals(closes, bb, kdj, jEntry, jExit);
 
     const chartOpts = {
@@ -277,8 +280,10 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 })
   }, [data, jEntry, jExit]);
 
   const closes = data.map(d => d.close);
+  const highs  = data.map(d => d.high);
+  const lows   = data.map(d => d.low);
   const bb = calcBB(closes);
-  const kdj = calcKDJ(closes);
+  const kdj = calcKDJ(closes, highs, lows);
   const lastBB = bb[bb.length-1];
   const lastKDJ = kdj[kdj.length-1];
   const lastClose = closes[closes.length-1];
@@ -479,8 +484,8 @@ function MonitorTab({ allAssets }) {
 // ─── 回測 Tab ────────────────────────────────────────────────
 function BacktestTab() {
   const [params, setParams] = useState({
-    ticker:"QLD", is_us:true, benchmark:"QQQ", amount:1000000, target:0.5,
-    j_entry:10, j_exit:90, days:3650, period_days:30, drift_pct:5
+    ticker:"00675L", is_us:false, benchmark:"006208", amount:1000000, target:0.5,
+    j_entry:10, j_exit:90, days:3650, period_days:90, drift_pct:25
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -616,8 +621,10 @@ function BacktestTab() {
     const isDataShort    = dataShortfall > 90; // 差超過 90 天才警告
 
     const closes = alignedRaw.map(d=>d.close);
+    const highs  = alignedRaw.map(d=>d.high);
+    const lows   = alignedRaw.map(d=>d.low);
     const bb = calcBB(closes);
-    const kdj = calcKDJ(closes);
+    const kdj = calcKDJ(closes, highs, lows);
     const signals = checkSignals(closes, bb, kdj, params.j_entry, params.j_exit);
 
     const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, alignedRaw, (i) => signals.some(s=>s.index===i));
@@ -789,12 +796,52 @@ function BacktestTab() {
           {p("j_exit","J值出場閾值")}
         </div>
         <div style={{fontSize:12, color:C.orange, fontWeight:600, marginBottom:10}}>週期再平衡參數</div>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:8}}>
           {p("period_days","再平衡週期（天）")}
         </div>
+        <div style={{display:"flex", flexWrap:"wrap", gap:4, marginBottom:14}}>
+          {[
+            {label:"月(30天)", days:30},
+            {label:"季(90天)", days:90},
+            {label:"半年(180天)", days:180},
+            {label:"年(365天)", days:365},
+          ].map(({label, days}) => (
+            <button
+              key={label}
+              onClick={() => setParams(v=>({...v, period_days:days}))}
+              style={{
+                background: params.period_days===days ? C.orange+"30" : C.surface,
+                color: params.period_days===days ? C.orange : C.textMuted,
+                border: `1px solid ${params.period_days===days ? C.orange+"60" : C.border}`,
+                borderRadius:5, padding:"2px 8px", fontSize:10,
+                fontWeight:600, cursor:"pointer",
+              }}
+            >{label}</button>
+          ))}
+        </div>
         <div style={{fontSize:12, color:"#9B6DFF", fontWeight:600, marginBottom:10}}>比例偏移再平衡參數</div>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
+        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:8}}>
           {p("drift_pct","偏離觸發閾值（%）")}
+        </div>
+        <div style={{display:"flex", flexWrap:"wrap", gap:4, marginBottom:14}}>
+          {[
+            {label:"5%（激進）", pct:5},
+            {label:"10%", pct:10},
+            {label:"20%", pct:20},
+            {label:"25%（穩健）", pct:25},
+          ].map(({label, pct}) => (
+            <button
+              key={label}
+              onClick={() => setParams(v=>({...v, drift_pct:pct}))}
+              style={{
+                background: params.drift_pct===pct ? "#9B6DFF30" : C.surface,
+                color: params.drift_pct===pct ? "#9B6DFF" : C.textMuted,
+                border: `1px solid ${params.drift_pct===pct ? "#9B6DFF60" : C.border}`,
+                borderRadius:5, padding:"2px 8px", fontSize:10,
+                fontWeight:600, cursor:"pointer",
+              }}
+            >{label}</button>
+          ))}
         </div>
         <div style={{display:"flex", alignItems:"center", gap:12}}>
           <Btn onClick={runBacktest} color={loading?C.textMuted:C.accent}>{loading?"計算中...":"▶ 執行回測"}</Btn>
