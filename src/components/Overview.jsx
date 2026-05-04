@@ -8,7 +8,7 @@
 //   5. 配置圓餅圖
 // ============================================================
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -70,6 +70,32 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       totalPnlPct: pnlPct,
     };
   }, [twAssets, usAssets, cryptoAssets, otherAssets, liabilities]);
+
+  // ── 週 / 月 / 年 結算計算 ───────────────────────────────────────────
+  const periodReturns = useMemo(() => {
+    if (!snapshots.length) return [];
+    // snapshots 降序（最新在前），找距今最近 N 天的快照
+    const findNet = (days) => {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const target = cutoff.toISOString().slice(0, 10);
+      // 找第一筆日期 <= target 的快照（即最接近 N 天前的那天）
+      const snap = snapshots.find(s => s.date <= target);
+      return snap ? snap.net : null;
+    };
+    const periods = [
+      { label: "週結算", days: 7,   icon: "📅" },
+      { label: "月結算", days: 30,  icon: "📆" },
+      { label: "年結算", days: 365, icon: "🗓️" },
+    ];
+    return periods.map(({ label, days, icon }) => {
+      const pastNet = findNet(days);
+      if (!pastNet) return { label, icon, delta: null, pct: null };
+      const delta = netWorth - pastNet;
+      const pctChange = (delta / pastNet) * 100;
+      return { label, icon, delta, pct: pctChange };
+    });
+  }, [snapshots, netWorth]);
 
   // ── 圓餅圖資料（useMemo 保證穩定的物件參考）─────────────────────────
   const pieData = useMemo(() => [
@@ -141,6 +167,41 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
         <KPI label="實際曝險倍率" value={actualLeverage.toFixed(2) + "x"} prefix="" color={C.orange}   sub="含ETF內含槓桿" />
         <KPI label="匯率 USD/TWD" value={usdRate.toFixed(2)}             prefix="" color={C.textMuted} />
       </div>
+
+      {/* ── 週 / 月 / 年 結算 ───────────────────────────── */}
+      {periodReturns.length > 0 && periodReturns.some(r => r.delta !== null) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+          {periodReturns.map(({ label, icon, delta, pct: pctChange }) => {
+            const hasData = delta !== null;
+            const isPos = hasData && delta >= 0;
+            const color = !hasData ? C.textMuted : isPos ? C.accent : C.red;
+            return (
+              <div key={label} style={{
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderRadius: 12,
+                padding: "12px 14px",
+              }}>
+                <div style={{ color: C.textMuted, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600, marginBottom: 6 }}>
+                  {icon} {label}
+                </div>
+                {hasData ? (
+                  <>
+                    <div style={{ color, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>
+                      {isPos ? "+" : ""}NT${fmtM(Math.abs(delta))}
+                    </div>
+                    <div style={{ color, fontSize: 11, marginTop: 3, fontWeight: 600 }}>
+                      {isPos ? "▲" : "▼"} {Math.abs(pctChange).toFixed(2)}%
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: C.textDim, fontSize: 12, marginTop: 4 }}>資料不足</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── 分類資產卡 ───────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
