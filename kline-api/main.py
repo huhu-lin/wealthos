@@ -33,7 +33,11 @@ sb = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL else None
 CACHE_TABLE = "kline_cache"
 
 def get_cache(ticker: str, days: int):
-    """從 Supabase 讀快取，若今天已抓過就直接回傳"""
+    """
+    從 Supabase 讀快取。
+    台股收盤時間為 UTC 05:30（13:30 TWN）。
+    若快取寫入時間早於收盤時間，且現在已過收盤，視為過期不使用。
+    """
     if not sb:
         return None
     try:
@@ -44,6 +48,21 @@ def get_cache(ticker: str, days: int):
             .eq("cached_date", today) \
             .execute()
         if res.data:
+            now_utc = datetime.utcnow()
+            # 台股收盤時間 UTC 05:30，yfinance 更新通常需再等 30 分鐘 → 06:00 UTC
+            tw_close_utc = now_utc.replace(hour=6, minute=0, second=0, microsecond=0)
+            # 解析快取寫入時間
+            created_str = res.data[0].get("created_at", "")
+            try:
+                created_at = datetime.fromisoformat(created_str.replace("+00:00", ""))
+            except Exception:
+                created_at = now_utc  # 解析失敗就當作新鮮的
+
+            # 快取寫在收盤前 + 現在已過收盤 → 強制過期
+            if created_at < tw_close_utc and now_utc >= tw_close_utc:
+                print(f"[cache stale] {ticker} cached before close ({created_at.strftime('%H:%M')} UTC), refreshing")
+                return None
+
             return json.loads(res.data[0]["data"])
     except Exception as e:
         print(f"[cache get] {e}")
