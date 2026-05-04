@@ -530,13 +530,14 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
       {brief ? (
         <>
           {/* 總經指標列 */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6, marginBottom:10 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:6, marginBottom:10 }}>
             {[
               { label:'VIX',    val:brief.vix,        unit:'',  chg:null },
               { label:'美債10Y', val:brief.us10y,      unit:'%', chg:null },
               { label:'DXY',    val:brief.dxy,         unit:'',  chg:null },
               { label:'S&P500', val:null, chg:brief.sp500_chg },
               { label:'NASDAQ', val:null, chg:brief.nasdaq_chg },
+              { label:'台股加權', val:null, chg:brief.twii_chg },
             ].map(({ label, val, unit, chg }) => (
               <div key={label} style={{ background:C.bg, borderRadius:6, padding:'6px 8px', textAlign:'center' }}>
                 <div style={{ color:C.textMuted, fontSize:10, marginBottom:2 }}>{label}</div>

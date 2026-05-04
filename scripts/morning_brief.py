@@ -188,6 +188,7 @@ nasdaq = macro.get("nasdaq", {})
 vix    = macro.get("vix",    {})
 us10y  = macro.get("us10y",  {})
 dxy    = macro.get("dxy",    {})
+twii   = macro.get("twii",   {})
 
 sb.table("morning_brief").upsert({
     "brief_date": today,
@@ -196,6 +197,7 @@ sb.table("morning_brief").upsert({
     "dxy":        dxy.get("value"),
     "sp500_chg":  sp500.get("chg"),
     "nasdaq_chg": nasdaq.get("chg"),
+    "twii_chg":   twii.get("chg"),
     "tw_news":    json.dumps(tw_news, ensure_ascii=False),
     "us_news":    json.dumps(us_news, ensure_ascii=False),
     "ai_summary": summary,
