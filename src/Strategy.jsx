@@ -634,9 +634,20 @@ function BacktestTab() {
       return Math.abs(actualPct - params.target*100) >= params.drift_pct;
     });
 
+    // ── P-002 非對稱：KDJ 只管買入，賣出改用偏移觸發 ──
+    // 買入訊號：KDJ 超賣 flag → J 值反彈（原 BUY 邏輯）
+    // 賣出/再平衡：25% 偏移觸發（不依賴 KDJ 過熱訊號）
+    const buySigs = new Set(signals.filter(s=>s.type==='BUY').map(s=>s.index));
+    const { equity: asymEquity, markers: asymMarkers } = simRebalance(closes, alignedRaw, (i, total, shares, price) => {
+      if (buySigs.has(i)) return true;
+      const actualPct = (shares * price) / total * 100;
+      return Math.abs(actualPct - params.target*100) >= params.drift_pct;
+    });
+
     const signalReturn = (signalEquity[signalEquity.length-1].value - params.amount) / params.amount * 100;
     const periodReturn = (periodEquity[periodEquity.length-1].value - params.amount) / params.amount * 100;
     const driftReturn  = (driftEquity[driftEquity.length-1].value - params.amount) / params.amount * 100;
+    const asymReturn   = (asymEquity[asymEquity.length-1].value - params.amount) / params.amount * 100;
     const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
@@ -662,8 +673,10 @@ function BacktestTab() {
     const periodStats = calcAnnualizedStats(periodVals, tradingDays, alignBmToEquity(periodEquity));
     const driftVals = driftEquity.map(e=>e.value);
     const driftStats = calcAnnualizedStats(driftVals, tradingDays, alignBmToEquity(driftEquity));
+    const asymVals = asymEquity.map(e=>e.value);
+    const asymStats = calcAnnualizedStats(asymVals, tradingDays, alignBmToEquity(asymEquity));
 
-    setResult({ signalEquity, periodEquity, driftEquity, signalMarkers, periodMarkers, driftMarkers, signalReturn, periodReturn, driftReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats });
+    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, signalReturn, periodReturn, driftReturn, asymReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -685,13 +698,16 @@ function BacktestTab() {
     const s1 = chart.addLineSeries({ color:C.accent,  lineWidth:2, title:"訊號再平衡" });
     const s2 = chart.addLineSeries({ color:C.orange,  lineWidth:2, lineStyle:0, title:`週期(${params.period_days}天)` });
     const s3 = chart.addLineSeries({ color:"#9B6DFF", lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
+    const s4 = chart.addLineSeries({ color:C.red,     lineWidth:2, lineStyle:0, title:`P-002 非對稱` });
     s1.setData(result.signalEquity.map(e=>({ time:e.date, value:e.value })));
     s2.setData(result.periodEquity.map(e=>({ time:e.date, value:e.value })));
     s3.setData(result.driftEquity.map(e=>({ time:e.date, value:e.value })));
+    s4.setData(result.asymEquity.map(e=>({ time:e.date, value:e.value })));
 
     s1.setMarkers(result.signalMarkers.map(date=>({ time:date, position:'aboveBar', color:C.accent, shape:'circle', text:'' })));
     s2.setMarkers(result.periodMarkers.map(date=>({ time:date, position:'aboveBar', color:C.orange, shape:'circle', text:'' })));
     s3.setMarkers(result.driftMarkers.map(date=>({ time:date, position:'belowBar', color:'#9B6DFF', shape:'circle', text:'' })));
+    s4.setMarkers(result.asymMarkers.map(date=>({ time:date, position:'belowBar', color:C.red, shape:'arrowUp', text:'' })));
 
     if (result.bmRaw?.length) {
       const bmInitShares = params.amount / result.bmRaw[0].close;
@@ -721,7 +737,7 @@ function BacktestTab() {
   return (
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
-      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>三種再平衡策略比較｜布林+KDJ訊號 vs 週期 vs 比例偏移｜<span style={{color:C.blue}}>還原股價（除息/分割調整）</span></div>
+      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>四種再平衡策略比較｜訊號 vs 週期 vs 偏移 vs <span style={{color:C.red, fontWeight:600}}>P-002 非對稱</span>（KDJ買入＋偏移賣出）｜<span style={{color:C.blue}}>還原股價（除息/分割調整）</span></div>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
         <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%（無原型資料時 fallback 為正報酬日數%）。<strong style={{color:C.gold}}>注意：</strong> KDJ 計算採收盤價高低（非完整燭台），回測不含交易成本與滑點。
@@ -903,6 +919,14 @@ function BacktestTab() {
                 stats: result.driftStats
               },
               {
+                label:"⚡ P-002 非對稱",
+                pct:`${result.asymReturn>=0?"+":""}${result.asymReturn.toFixed(1)}%`,
+                amt: result.asymReturn/100*params.amount,
+                color:C.red,
+                sub:`${result.asymMarkers.length} 次｜KDJ買+偏移賣`,
+                stats: result.asymStats
+              },
+              {
                 label:"📈 原型ETF買進持有",
                 pct: result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-",
                 amt: result.bmReturn!=null ? result.bmReturn/100*params.amount : null,
@@ -940,8 +964,8 @@ function BacktestTab() {
             ))}
           </div>
           <Card style={{padding:12, marginBottom:16}}>
-            <div style={{display:"flex", gap:16, marginBottom:8}}>
-              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["原型ETF",C.blue]].map(([l,c])=>(
+            <div style={{display:"flex", gap:16, marginBottom:8, flexWrap:"wrap"}}>
+              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["P-002 非對稱",C.red],["原型ETF",C.blue]].map(([l,c])=>(
                 <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
                   <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
                 </div>
