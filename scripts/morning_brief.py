@@ -107,13 +107,31 @@ def generate_summary(macro, tw_news, us_news):
 【昨日美股重點新聞】
 {us_titles}"""
 
-    # 依序嘗試不同模型
+    # 依序嘗試不同模型（依 Google 官方可用順序）
     models = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
+        "gemini-1.5-flash",          # 最穩定的免費模型
         "gemini-1.5-flash-latest",
-        "gemini-1.0-pro",
+        "gemini-1.5-flash-8b",       # 更小更快的版本
+        "gemini-2.0-flash-exp",      # 2.0 實驗版（免費可用）
+        "gemini-2.0-flash",          # 2.0 正式版
+        "gemini-1.5-pro",            # Pro（免費有配額）
     ]
+
+    # 先測試 API Key 是否有效
+    test_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+    try:
+        test_r = requests.get(test_url, timeout=10)
+        if test_r.status_code == 200:
+            available = [m.get("name","") for m in test_r.json().get("models", [])]
+            print(f"  API Key 有效，可用模型數：{len(available)}")
+            # 過濾出可用的模型
+            available_names = [n.split("/")[-1] for n in available]
+            print(f"  前5個可用：{available_names[:5]}")
+        else:
+            print(f"  ⚠️  API Key 測試失敗：HTTP {test_r.status_code} — {test_r.text[:300]}")
+    except Exception as e:
+        print(f"  ⚠️  API Key 測試例外：{e}")
+
     for model in models:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
@@ -122,16 +140,17 @@ def generate_summary(macro, tw_news, us_news):
                 "generationConfig": {"temperature": 0.7, "maxOutputTokens": 600}
             }
             r = requests.post(url, json=payload, timeout=30)
-            print(f"  HTTP {r.status_code} — model: {model}")
+            print(f"  [{model}] HTTP {r.status_code}")
             if r.status_code == 200:
                 data = r.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
                 print(f"  ✅ 摘要生成成功（{model}）：{text[:60]}...")
                 return text.strip()
             else:
-                print(f"  ⚠️  {model} 回應：{r.text[:200]}")
+                # 完整印出錯誤（幫助診斷）
+                print(f"  ⚠️  {model} 錯誤：{r.text[:400]}")
         except Exception as e:
-            print(f"  ❌ {model} 失敗：{e}")
+            print(f"  ❌ {model} 例外：{e}")
 
     raise Exception("所有 Gemini 模型均失敗")
 
