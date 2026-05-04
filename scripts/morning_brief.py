@@ -107,14 +107,14 @@ def generate_summary(macro, tw_news, us_news):
 【昨日美股重點新聞】
 {us_titles}"""
 
-    # 依序嘗試不同模型（依 Google 官方可用順序）
+    # 依序嘗試不同模型（從 /v1beta/models 確認可用清單）
+    # Log 確認可用：gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash, gemini-2.0-flash-001
     models = [
-        "gemini-1.5-flash",          # 最穩定的免費模型
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash-8b",       # 更小更快的版本
-        "gemini-2.0-flash-exp",      # 2.0 實驗版（免費可用）
-        "gemini-2.0-flash",          # 2.0 正式版
-        "gemini-1.5-pro",            # Pro（免費有配額）
+        "gemini-2.5-flash",           # 最新最快，免費有配額
+        "gemini-2.0-flash-lite-001",  # 輕量版，配額最寬鬆
+        "gemini-2.0-flash-001",
+        "gemini-2.0-flash",
+        "gemini-2.5-pro",             # Pro，備用
     ]
 
     # 先測試 API Key 是否有效
@@ -124,7 +124,6 @@ def generate_summary(macro, tw_news, us_news):
         if test_r.status_code == 200:
             available = [m.get("name","") for m in test_r.json().get("models", [])]
             print(f"  API Key 有效，可用模型數：{len(available)}")
-            # 過濾出可用的模型
             available_names = [n.split("/")[-1] for n in available]
             print(f"  前5個可用：{available_names[:5]}")
         else:
