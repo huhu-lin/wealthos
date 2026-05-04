@@ -866,15 +866,27 @@ function BacktestTab() {
     const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
-    // P-004：台股加入加權指數（^TWII）作為第二基準
-    // ^TWII 是純加權股價指數（價格指數，不含股息），走 US 端點避免被加上 .TW 後綴
-    // 注意：^TWII 不含股息，每年約低估大盤真實報酬 3~4%，解讀時需留意
+    // P-004：台股加入大盤基準（首選 ^TWII 加權指數；^TWII 冷啟動空回傳時降級為 0050）
+    // ^TWII：純加權股價指數，走 US 端點（不加 .TW），不含股息，每年低估約 3~4%
+    // 0050 fallback：還原股價已含股息再投資，等同含息報酬基準，但含 0.43% 管理費
     let bm2Raw = [];
+    let bm2Label = "加權指數（^TWII）";
     if (!params.is_us) {
       try {
-        const fetched = await fetchUSKline("^TWII", params.days);
-        bm2Raw = fetched.filter(d => d.date >= alignStart);
-      } catch(e) { bm2Raw = []; }
+        const twiiData = await fetchUSKline("^TWII", params.days);
+        if (twiiData.length > 10) {
+          bm2Raw = twiiData.filter(d => d.date >= alignStart);
+          bm2Label = "加權指數（^TWII，不含股息）";
+        } else {
+          // ^TWII 未命中快取、Render 冷啟動 → fallback 到 0050（預載，秒出）
+          const data0050 = await fetchTWKline("0050", params.days);
+          bm2Raw = data0050.filter(d => d.date >= alignStart);
+          bm2Label = "0050 含息（大盤代理）";
+        }
+      } catch(e) {
+        bm2Raw = [];
+        bm2Label = "";
+      }
     }
     const bm2Return = bm2Raw.length ? (bm2Raw[bm2Raw.length-1].close - bm2Raw[0].close) / bm2Raw[0].close * 100 : null;
 
@@ -904,7 +916,7 @@ function BacktestTab() {
     const annualVals = annualEquity.map(e=>e.value);
     const annualStats = calcAnnualizedStats(annualVals, tradingDays, alignBmToEquity(annualEquity));
 
-    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, bm2Raw, bm2Return, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
+    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, bm2Raw, bm2Return, bm2Label, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -945,10 +957,10 @@ function BacktestTab() {
       const bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
       bmLine.setData(result.bmRaw.map(d=>({ time:d.date, value:bmInitShares*d.close })));
     }
-    // P-004：加權指數（^TWII）第二基準線
+    // P-004：大盤基準線（^TWII 或 0050 fallback，依 bm2Label 顯示）
     if (result.bm2Raw?.length) {
       const bm2Shares = params.amount / result.bm2Raw[0].close;
-      const bm2Line = chart.addLineSeries({ color:"#4D9EFF60", lineWidth:1, lineStyle:3, title:"加權指數" });
+      const bm2Line = chart.addLineSeries({ color:"#4D9EFF80", lineWidth:1, lineStyle:3, title: result.bm2Label || "大盤基準" });
       bm2Line.setData(result.bm2Raw.map(d=>({ time:d.date, value:bm2Shares*d.close })));
     }
 
@@ -1219,11 +1231,11 @@ function BacktestTab() {
                 stats: null
               },
               ...(result.bm2Raw?.length ? [{
-                label:"📊 加權指數 (P-004)",
+                label:`📊 大盤基準 (P-004)`,
                 pct: result.bm2Return!=null?`${result.bm2Return>=0?"+":""}${result.bm2Return.toFixed(1)}%`:"-",
                 amt: result.bm2Return!=null ? result.bm2Return/100*params.amount : null,
                 color:"#4D9EFF",
-                sub:"^TWII 加權指數（價格，不含股息）",
+                sub: result.bm2Label || "大盤基準",
                 stats: null
               }] : []),
               {
@@ -1257,7 +1269,12 @@ function BacktestTab() {
           </div>
           <Card style={{padding:12, marginBottom:16}}>
             <div style={{display:"flex", gap:16, marginBottom:8, flexWrap:"wrap"}}>
-              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["KDJ買+偏移賣",C.red],["年度再平衡","#00D9C0"],["原型ETF",C.blue],["加權指數","#4D9EFF60"]].map(([l,c])=>(
+              {[
+                ["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],
+                ["KDJ買+偏移賣",C.red],["年度再平衡","#00D9C0"],
+                [`${params.benchmark||"原型ETF"}`,C.blue],
+                ...(result.bm2Raw?.length ? [[result.bm2Label||"大盤基準","#4D9EFF80"]] : []),
+              ].map(([l,c])=>(
                 <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
                   <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
                 </div>
