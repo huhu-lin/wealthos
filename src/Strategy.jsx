@@ -701,9 +701,15 @@ function BacktestTab() {
   const chartInstance = useRef(null);
 
 
-  // tradeCost: 每次再平衡扣除的交易成本比率（P-003）
-  // 0.585% = 手續費 0.1425%×2（買賣各一） + 證交稅 0.3%
-  function simRebalance(closes, raw, triggerFn, tradeCost=0) {
+  // P-003 交易成本（方向感知）：
+  //   再平衡 = 單向一筆交易，不是進出各一次
+  //   買入 ETF（加碼）：手續費 0.1425%
+  //   賣出 ETF（減碼）：手續費 0.1425% + 證交稅 0.3% = 0.4425%
+  // withCostFlag: true 時啟用，false 時 tradeCost=0
+  const BUY_COST  = 0.001425; // 手續費（買）
+  const SELL_COST = 0.004425; // 手續費 + 證交稅（賣）
+
+  function simRebalance(closes, raw, triggerFn, withCostFlag=false) {
     let cash = params.amount * (1 - params.target);
     let shares = (params.amount * params.target) / closes[0];
     const equity = [{ date:raw[0].date, value:params.amount }];
@@ -711,10 +717,14 @@ function BacktestTab() {
     for (let i=1; i<closes.length; i++) {
       const totalNow = cash + shares * closes[i];
       if (triggerFn(i, totalNow, shares, closes[i])) {
-        const netTotal = totalNow * (1 - tradeCost); // 扣除交易成本後淨值
-        const targetVal = netTotal * params.target;
-        shares = targetVal / closes[i];
-        cash = netTotal - targetVal;
+        const targetVal = totalNow * params.target;
+        const isBuying = targetVal > shares * closes[i]; // 目標持倉 > 現持倉 → 買入
+        const cost = withCostFlag ? (isBuying ? BUY_COST : SELL_COST) : 0;
+        const txAmt = Math.abs(targetVal - shares * closes[i]); // 實際交易金額
+        const netTotal = totalNow - txAmt * cost;               // 只對交易金額扣成本
+        const newTargetVal = netTotal * params.target;
+        shares = newTargetVal / closes[i];
+        cash = netTotal - newTargetVal;
         markers.push(raw[i].date);
       }
       equity.push({ date:raw[i].date, value:cash + shares*closes[i] });
@@ -837,15 +847,13 @@ function BacktestTab() {
     const kdj = calcKDJ(closes, highs, lows);
     const signals = checkSignals(closes, bb, kdj, params.j_entry, params.j_exit);
 
-    // P-003：交易成本（每次再平衡扣 0.585%）
-    const tradeCost = withCost ? 0.00585 : 0;
-
-    const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, alignedRaw, (i) => signals.some(s=>s.index===i), tradeCost);
-    const { equity: periodEquity, markers: periodMarkers } = simRebalance(closes, alignedRaw, (i) => i % params.period_days === 0, tradeCost);
+    // P-003：交易成本（方向感知，買 0.1425%，賣 0.4425%）
+    const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, alignedRaw, (i) => signals.some(s=>s.index===i), withCost);
+    const { equity: periodEquity, markers: periodMarkers } = simRebalance(closes, alignedRaw, (i) => i % params.period_days === 0, withCost);
     const { equity: driftEquity, markers: driftMarkers } = simRebalance(closes, alignedRaw, (i, total, shares, price) => {
       const actualPct = (shares * price) / total * 100;
       return Math.abs(actualPct - params.target*100) >= params.drift_pct;
-    }, tradeCost);
+    }, withCost);
 
     // ── P-002 非對稱：KDJ 只管買入，賣出改用偏移觸發 ──
     const buySigs = new Set(signals.filter(s=>s.type==='BUY').map(s=>s.index));
@@ -853,10 +861,10 @@ function BacktestTab() {
       if (buySigs.has(i)) return true;
       const actualPct = (shares * price) / total * 100;
       return Math.abs(actualPct - params.target*100) >= params.drift_pct;
-    }, tradeCost);
+    }, withCost);
 
     // ── P-001 年度再平衡：每 252 個交易日（≈1年）固定再平衡 ──
-    const { equity: annualEquity, markers: annualMarkers } = simRebalance(closes, alignedRaw, (i) => i % 252 === 0, tradeCost);
+    const { equity: annualEquity, markers: annualMarkers } = simRebalance(closes, alignedRaw, (i) => i % 252 === 0, withCost);
 
     const signalReturn = (signalEquity[signalEquity.length-1].value - params.amount) / params.amount * 100;
     const periodReturn = (periodEquity[periodEquity.length-1].value - params.amount) / params.amount * 100;
@@ -989,7 +997,7 @@ function BacktestTab() {
       <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>五種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span>｜台股自動加入 <span style={{color:"#4D9EFF", fontWeight:600}}>加權指數^TWII(P-004)</span> 雙基準</div>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
-        <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%。KDJ 計算採 OHLCV 實際最高/最低價（業界標準）。<strong style={{color:C.gold}}>注意：</strong> 還原股價已含息再投資，回測不含滑點；交易成本可用下方 P-003 開關切換。
+        <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%。KDJ 計算採 OHLCV 實際最高/最低價（業界標準）。<strong style={{color:C.gold}}>注意：</strong> 還原股價已含息再投資，回測不含滑點；P-003 交易成本：買入 0.1425%、賣出 0.4425%（含證交稅），僅對交易金額計算。
       </Card>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface2, border:`1px solid ${C.border}`, fontSize:11, lineHeight:"1.7"}}>
@@ -1141,7 +1149,7 @@ function BacktestTab() {
               style={{accentColor:C.gold, width:14, height:14, cursor:"pointer"}}
             />
             <span style={{color: withCost ? C.gold : C.textMuted, fontSize:12, fontWeight: withCost ? 600 : 400}}>
-              📉 P-003 含交易成本（0.585%/次 = 手續費×2 + 證交稅）
+              📉 P-003 含交易成本（買入 0.1425%｜賣出 0.4425% = 手續費 + 證交稅）
             </span>
           </label>
           {loadingMsg && <span style={{color:C.accent, fontSize:12}}>{loadingMsg}</span>}
@@ -1177,7 +1185,7 @@ function BacktestTab() {
 
           {result.withCost && (
             <div style={{background:C.gold+"12", border:`1px solid ${C.gold}40`, borderRadius:8, padding:"8px 14px", marginBottom:12, fontSize:11, color:C.gold}}>
-              📉 <strong>P-003 交易成本模式</strong>：每次再平衡扣除 0.585%（手續費 0.1425%×2 + 證交稅 0.3%），再平衡次數越多成本越高。
+              📉 <strong>P-003 交易成本模式</strong>：買入再平衡扣 0.1425%（手續費），賣出再平衡扣 0.4425%（手續費 + 證交稅 0.3%），僅對實際交易金額計算。
             </div>
           )}
           <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16}}>
