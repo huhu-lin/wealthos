@@ -1,0 +1,33 @@
+name: Morning Brief Generator
+
+# 每天台灣時間 08:00（UTC 00:00）自動執行
+# 抓取總經指標 + 財經新聞 → Gemini AI 生成盤前摘要 → 存 Supabase
+# 前端監控分頁開啟時直接讀取，無需等待
+
+on:
+  schedule:
+    - cron: "0 0 * * 1-5"   # UTC 00:00 = TWN 08:00，週一到週五
+  workflow_dispatch:          # 允許手動觸發（測試用）
+
+jobs:
+  generate-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install yfinance requests google-generativeai supabase --quiet
+
+      - name: Generate morning brief
+        env:
+          GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python scripts/morning_brief.py

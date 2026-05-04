@@ -373,6 +373,21 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
 
 // ─── T-3：盤前摘要卡片 ──────────────────────────────────────
 function PreMarketSummary({ tickers, klineMap, allAssets }) {
+  const [brief, setBrief] = useState(null);
+
+  useEffect(() => {
+    async function fetchBrief() {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data } = await supabase
+        .from("morning_brief")
+        .select("*")
+        .eq("brief_date", today)
+        .limit(1);
+      if (data?.[0]) setBrief(data[0]);
+    }
+    fetchBrief();
+  }, []);
+
   if (!tickers.length) return null;
 
   const today = new Date().toLocaleDateString('zh-TW', { month:'numeric', day:'numeric', weekday:'short' });
@@ -510,6 +525,41 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
           </div>
         </div>
       ))}
+
+      {/* ── AI 盤前摘要（來自 Gemini，每日 08:00 自動生成）── */}
+      {brief ? (
+        <>
+          {/* 總經指標列 */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6, marginBottom:10 }}>
+            {[
+              { label:'VIX',    val:brief.vix,        unit:'',  chg:null },
+              { label:'美債10Y', val:brief.us10y,      unit:'%', chg:null },
+              { label:'DXY',    val:brief.dxy,         unit:'',  chg:null },
+              { label:'S&P500', val:null, chg:brief.sp500_chg },
+              { label:'NASDAQ', val:null, chg:brief.nasdaq_chg },
+            ].map(({ label, val, unit, chg }) => (
+              <div key={label} style={{ background:C.bg, borderRadius:6, padding:'6px 8px', textAlign:'center' }}>
+                <div style={{ color:C.textMuted, fontSize:10, marginBottom:2 }}>{label}</div>
+                {val !== null && val !== undefined
+                  ? <div style={{ color:C.text, fontWeight:600, fontSize:12 }}>{val}{unit}</div>
+                  : <div style={{ color: chg >= 0 ? C.accent : C.red, fontWeight:600, fontSize:12 }}>
+                      {chg >= 0 ? '+' : ''}{chg?.toFixed(2)}%
+                    </div>
+                }
+              </div>
+            ))}
+          </div>
+          {/* AI 摘要文字 */}
+          <div style={{ background:C.bg, borderRadius:8, padding:'12px 14px', fontSize:12, lineHeight:1.8, color:C.text, borderLeft:`3px solid ${C.accent}` }}>
+            <span style={{ color:C.accent, fontWeight:600, marginRight:6 }}>🤖 AI 盤前分析</span>
+            {brief.ai_summary}
+          </div>
+        </>
+      ) : (
+        <div style={{ background:C.bg, borderRadius:8, padding:'10px 14px', fontSize:11, color:C.textMuted, textAlign:'center' }}>
+          AI 盤前摘要每日 08:00 自動生成，今日摘要尚未就緒
+        </div>
+      )}
     </Card>
   );
 }
