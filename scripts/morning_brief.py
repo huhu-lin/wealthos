@@ -136,7 +136,11 @@ def generate_summary(macro, tw_news, us_news):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 600}
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": 1024,
+                    "thinkingConfig": {"thinkingBudget": 0}  # 關閉思考模式，token 全給答案
+                }
             }
             r = requests.post(url, json=payload, timeout=30)
             print(f"  [{model}] HTTP {r.status_code}")
