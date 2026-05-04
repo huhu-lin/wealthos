@@ -16,8 +16,9 @@ import {
 } from "recharts";
 
 import { C, TT, fmt, fmtM, pct } from "../constants/theme";
-import Card from "./ui/Card";
-import KPI  from "./ui/KPI";
+import Card        from "./ui/Card";
+import KPI         from "./ui/KPI";
+import MarketBrief from "./MarketBrief";
 
 export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, snapshots, usdRate }) {
 
@@ -109,6 +110,9 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
 
   return (
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* ── 每日市場摘要（盤前分析）── */}
+      <MarketBrief />
 
       {/* ── 淨值主卡 ─────────────────────────────────────── */}
       <div style={{
