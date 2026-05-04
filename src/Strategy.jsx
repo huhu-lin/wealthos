@@ -200,7 +200,7 @@ function checkSignals(closes, bb, kdj, jEntry=10, jExit=90) {
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
-function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 }) {
+function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal' }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -291,7 +291,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 })
   let status = '正常', statusColor = C.textMuted;
   if (lastBB && lastKDJ) {
     if (lastClose < lastBB.lower && lastKDJ.j < jEntry) { status='蓄力中 ⚡'; statusColor=C.accent; }
-    else if (lastClose > lastBB.upper && lastKDJ.j > jExit) { status='過熱中 🔥'; statusColor=C.red; }
+    else if (strategyMode !== 'asymmetric' && lastClose > lastBB.upper && lastKDJ.j > jExit) { status='過熱中 🔥'; statusColor=C.red; }
     else if (lastKDJ.j < jEntry) { status='J值低位'; statusColor=C.blue; }
     else if (lastKDJ.j > jExit) { status='J值高位'; statusColor=C.gold; }
   }
@@ -314,6 +314,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90 })
           {lastClose>0 && <span style={{color:C.textMuted, fontSize:13}}>{isUS?'$':'NT$'}{lastClose?.toFixed(2)}</span>}
           <Badge text={status} color={statusColor}/>
           <Badge text="還原股價" color={C.blue}/>
+          {strategyMode === 'asymmetric' && <Badge text="⚡ P-002 非對稱" color={C.orange}/>}
         </div>
         {lastKDJ && <span style={{color:C.textMuted, fontSize:12}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
@@ -345,7 +346,7 @@ function MonitorTab({ allAssets }) {
   const [loadingTicker, setLoadingTicker] = useState(""); // 顯示正在抓哪支
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0 });
+  const [form, setForm] = useState({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal' });
 
   async function loadTickers() {
     const { data } = await supabase.from("strategy_tickers").select("*").order("id");
@@ -378,7 +379,7 @@ function MonitorTab({ allAssets }) {
       await supabase.from("strategy_tickers").insert(form);
     }
     setShowAdd(false); setEditId(null);
-    setForm({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0 });
+    setForm({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal' });
     const list = await loadTickers();
     await loadKlines(list);
   }
@@ -390,7 +391,7 @@ function MonitorTab({ allAssets }) {
   }
 
   function handleEdit(t) {
-    setForm({ ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount });
+    setForm({ ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount, strategy_mode:t.strategy_mode||'signal' });
     setEditId(t.id);
     setShowAdd(true);
   }
@@ -402,7 +403,7 @@ function MonitorTab({ allAssets }) {
           <div style={{fontWeight:700, fontSize:15, color:C.text}}>再平衡訊號監控</div>
           <div style={{color:C.textMuted, fontSize:12, marginTop:2}}>布林通道 (20,2) + KDJ (9,3,3)｜還原股價｜箭頭標記為訊號觸發點</div>
         </div>
-        <Btn onClick={()=>{ setShowAdd(!showAdd); setEditId(null); setForm({ticker:"",is_us:false,target:0.5,j_entry:10,j_exit:90,amount:0}); }}>
+        <Btn onClick={()=>{ setShowAdd(!showAdd); setEditId(null); setForm({ticker:"",is_us:false,target:0.5,j_entry:10,j_exit:90,amount:0,strategy_mode:'signal'}); }}>
           {showAdd ? "✕ 取消" : "+ 新增股票"}
         </Btn>
       </div>
@@ -436,6 +437,14 @@ function MonitorTab({ allAssets }) {
               <Input type="number" value={form.j_exit} onChange={e=>setForm({...form, j_exit:parseFloat(e.target.value)})} style={{width:"100%"}}/>
             </div>
             <div>
+              <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>策略模式</div>
+              <select value={form.strategy_mode} onChange={e=>setForm({...form, strategy_mode:e.target.value})}
+                style={{background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"7px 10px", fontSize:12, width:"100%"}}>
+                <option value="signal">原訊號再平衡（KDJ+布林）</option>
+                <option value="asymmetric">⚡ P-002 非對稱（KDJ買+偏移賣）</option>
+              </select>
+            </div>
+            <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>進場金額 (NT$)</div>
               <Input type="number" value={form.amount} onChange={e=>setForm({...form, amount:parseFloat(e.target.value)})} style={{width:"100%"}}/>
             </div>
@@ -451,6 +460,7 @@ function MonitorTab({ allAssets }) {
               <span style={{fontWeight:600, fontSize:13}}>{t.ticker}</span>
               <span style={{color:C.textMuted, fontSize:11}}>{t.is_us?"美股":"台股"}</span>
               <span style={{color:C.textMuted, fontSize:11}}>J:{t.j_entry}/{t.j_exit}</span>
+              {(t.strategy_mode||'signal')==='asymmetric' && <span style={{color:C.orange, fontSize:10, fontWeight:600}}>⚡非對稱</span>}
               <button onClick={()=>handleEdit(t)} style={{background:"none", border:"none", color:C.blue, cursor:"pointer", fontSize:11, padding:"0 2px"}}>編輯</button>
               <button onClick={()=>handleDelete(t.id)} style={{background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:11, padding:"0 2px"}}>✕</button>
             </div>
@@ -474,6 +484,7 @@ function MonitorTab({ allAssets }) {
             target={t.target}
             jEntry={t.j_entry}
             jExit={t.j_exit}
+            strategyMode={t.strategy_mode||'signal'}
           />
         ))
       )}
@@ -483,6 +494,7 @@ function MonitorTab({ allAssets }) {
 
 // ─── 回測 Tab ────────────────────────────────────────────────
 function BacktestTab() {
+  // target 內部以 0~1 儲存，UI 以 0~100% 顯示
   const [params, setParams] = useState({
     ticker:"00675L", is_us:false, benchmark:"006208", amount:1000000, target:0.5,
     j_entry:10, j_exit:90, days:3650, period_days:90, drift_pct:25
@@ -775,7 +787,32 @@ function BacktestTab() {
           {p("is_us","市場","select")}
           {p("benchmark","對比原型ETF","text",{placeholder:"如 QQQ / 0050"})}
           {p("amount","初始資金 (NT$)")}
-          {p("target","股票佔比（0.5=50%）")}
+          <div>
+            <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>股票佔比（%）</div>
+            <Input
+              type="number"
+              value={Math.round(params.target * 100)}
+              onChange={e => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v) && v > 0 && v < 100) setParams(p=>({...p, target: v/100}));
+              }}
+              placeholder="50"
+              style={{width:"100%"}}
+            />
+            <div style={{display:"flex", flexWrap:"wrap", gap:4, marginTop:6}}>
+              {[30,40,50,60,70].map(pct => (
+                <button key={pct}
+                  onClick={() => setParams(v=>({...v, target: pct/100}))}
+                  style={{
+                    background: Math.round(params.target*100)===pct ? C.accent+"30" : C.surface,
+                    color: Math.round(params.target*100)===pct ? C.accent : C.textMuted,
+                    border:`1px solid ${Math.round(params.target*100)===pct ? C.accent+"60" : C.border}`,
+                    borderRadius:5, padding:"2px 8px", fontSize:10, fontWeight:600, cursor:"pointer",
+                  }}
+                >{pct}%</button>
+              ))}
+            </div>
+          </div>
           <div>
             <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>回測天數</div>
             <Input
