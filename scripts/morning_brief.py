@@ -9,9 +9,8 @@ import requests
 import json
 import os
 import sys
-from datetime import date, datetime
+from datetime import date
 
-import google.generativeai as genai
 from supabase import create_client
 
 # ── 初始化 ────────────────────────────────────────────────────
@@ -23,15 +22,16 @@ if not all([GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY]):
     print("❌ 缺少環境變數：GEMINI_API_KEY / SUPABASE_URL / SUPABASE_SERVICE_KEY")
     sys.exit(1)
 
-genai.configure(api_key=GEMINI_API_KEY)
-sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+sb    = create_client(SUPABASE_URL, SUPABASE_KEY)
 today = date.today().isoformat()
 
-# ── 防重複執行 ────────────────────────────────────────────────
-existing = sb.table("morning_brief").select("id").eq("brief_date", today).execute()
-if existing.data:
-    print(f"✅ {today} 的盤前摘要已存在，跳過")
-    sys.exit(0)
+# ── 防重複執行（手動觸發時跳過） ──────────────────────────────
+force = os.environ.get("FORCE_REGENERATE", "false").lower() == "true"
+if not force:
+    existing = sb.table("morning_brief").select("id").eq("brief_date", today).execute()
+    if existing.data:
+        print(f"✅ {today} 的盤前摘要已存在，跳過（設 FORCE_REGENERATE=true 強制重生成）")
+        sys.exit(0)
 
 # ── 抓取總經指標 ──────────────────────────────────────────────
 def get_macro():
@@ -41,12 +41,13 @@ def get_macro():
         "dxy":    "DX-Y.NYB",
         "sp500":  "^GSPC",
         "nasdaq": "^IXIC",
-        "twii":   "^TWII",   # 台灣加權指數（替代台指期夜盤）
+        "twii":   "^TWII",
     }
     result = {}
     for key, sym in symbols.items():
         try:
-            hist = yf.Ticker(sym).history(period="2d")
+            hist = yf.Ticker(sym).history(period="5d")  # 多抓幾天避免假日空資料
+            hist = hist.dropna()
             if len(hist) >= 2:
                 curr = float(hist["Close"].iloc[-1])
                 prev = float(hist["Close"].iloc[-2])
@@ -54,7 +55,7 @@ def get_macro():
                 result[key] = {"value": round(curr, 2), "chg": round(chg, 2)}
                 print(f"  ✅ {key} ({sym}): {curr:.2f} ({chg:+.2f}%)")
             else:
-                print(f"  ⚠️  {key} ({sym}): 資料不足")
+                print(f"  ⚠️  {key} ({sym}): 資料不足（{len(hist)} 筆）")
         except Exception as e:
             print(f"  ❌ {key} ({sym}): {e}")
     return result
@@ -66,18 +67,12 @@ def get_news(category, limit=4):
         r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         data = r.json()
         items = data.get("items", {}).get("data", [])
-        return [
-            {
-                "title": d.get("title", ""),
-                "url": f"https://news.cnyes.com/news/id/{d.get('newsId', '')}",
-            }
-            for d in items
-        ]
+        return [{"title": d.get("title", ""), "url": f"https://news.cnyes.com/news/id/{d.get('newsId', '')}"} for d in items]
     except Exception as e:
         print(f"  ❌ 新聞 {category}: {e}")
         return []
 
-# ── 生成 Gemini 摘要 ──────────────────────────────────────────
+# ── Gemini REST API 生成摘要（不用 SDK，直接打 HTTP）─────────
 def generate_summary(macro, tw_news, us_news):
     sp500  = macro.get("sp500",  {})
     nasdaq = macro.get("nasdaq", {})
@@ -87,8 +82,7 @@ def generate_summary(macro, tw_news, us_news):
     dxy    = macro.get("dxy",    {})
 
     def fmt(d, unit=""):
-        if not d:
-            return "N/A"
+        if not d: return "N/A"
         return f"{d['value']}{unit} ({d['chg']:+.2f}%)"
 
     tw_titles = "\n".join([f"- {n['title']}" for n in tw_news[:4]])
@@ -113,19 +107,36 @@ def generate_summary(macro, tw_news, us_news):
 【昨日美股重點新聞】
 {us_titles}"""
 
-    # 依序嘗試可用的 Gemini 模型
-    for model_name in ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"]:
+    # 依序嘗試不同模型
+    models = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.0-pro",
+    ]
+    for model in models:
         try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            print(f"  使用模型：{model_name}")
-            return response.text.strip()
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 600}
+            }
+            r = requests.post(url, json=payload, timeout=30)
+            print(f"  HTTP {r.status_code} — model: {model}")
+            if r.status_code == 200:
+                data = r.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                print(f"  ✅ 摘要生成成功（{model}）：{text[:60]}...")
+                return text.strip()
+            else:
+                print(f"  ⚠️  {model} 回應：{r.text[:200]}")
         except Exception as e:
-            print(f"  ⚠️  {model_name} 失敗：{e}")
+            print(f"  ❌ {model} 失敗：{e}")
+
     raise Exception("所有 Gemini 模型均失敗")
 
 # ── 主流程 ────────────────────────────────────────────────────
-print(f"\n📋 開始生成 {today} 盤前摘要...\n")
+print(f"\n📋 開始生成 {today} 盤前摘要（force={force}）\n")
 
 print("【步驟 1】抓取總經指標")
 macro = get_macro()
@@ -138,10 +149,9 @@ print(f"  台股新聞：{len(tw_news)} 則，美股新聞：{len(us_news)} 則"
 print("\n【步驟 3】Gemini 生成摘要")
 try:
     summary = generate_summary(macro, tw_news, us_news)
-    print(f"  摘要：{summary[:80]}...")
 except Exception as e:
-    print(f"  ❌ Gemini 生成失敗：{e}")
-    summary = "今日盤前摘要生成失敗，請稍後重試。"
+    print(f"  ❌ 最終失敗：{e}")
+    summary = None  # 不存失敗訊息，保持 null 讓前端顯示「尚未就緒」
 
 print("\n【步驟 4】存入 Supabase")
 sp500  = macro.get("sp500",  {})
@@ -162,4 +172,7 @@ sb.table("morning_brief").upsert({
     "ai_summary": summary,
 }, on_conflict="brief_date").execute()
 
-print(f"\n✅ {today} 盤前摘要完成！")
+if summary:
+    print(f"\n✅ {today} 盤前摘要完成！")
+else:
+    print(f"\n⚠️  {today} 總經數據已存，但 AI 摘要生成失敗")

@@ -23,11 +23,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yfinance requests google-generativeai supabase --quiet
+          pip install yfinance requests supabase --quiet
 
       - name: Generate morning brief
         env:
-          GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
-          SUPABASE_URL:        ${{ secrets.SUPABASE_URL }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          FORCE_REGENERATE:     "true"   # 手動觸發時強制重生成
         run: python scripts/morning_brief.py
