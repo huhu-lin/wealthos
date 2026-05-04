@@ -52,7 +52,7 @@ jobs:
           BASE="https://wealthos-kline.onrender.com"
           DAYS=9999
 
-          US_TICKERS=("SPY" "QQQ" "IWM" "VOO" "VTI" "QLD" "TQQQ" "SSO" "UPRO" "SOXL" "TECL" "FNGU" "^TWII")
+          US_TICKERS=("SPY" "QQQ" "VOO" "VTI" "VT" "QLD" "TQQQ" "SSO" "UPRO")
 
           echo "=== 美股 ETF 預載開始 ==="
           for t in "${US_TICKERS[@]}"; do
