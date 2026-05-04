@@ -113,9 +113,16 @@ def generate_summary(macro, tw_news, us_news):
 【昨日美股重點新聞】
 {us_titles}"""
 
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    # 依序嘗試可用的 Gemini 模型
+    for model_name in ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"]:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            print(f"  使用模型：{model_name}")
+            return response.text.strip()
+        except Exception as e:
+            print(f"  ⚠️  {model_name} 失敗：{e}")
+    raise Exception("所有 Gemini 模型均失敗")
 
 # ── 主流程 ────────────────────────────────────────────────────
 print(f"\n📋 開始生成 {today} 盤前摘要...\n")
