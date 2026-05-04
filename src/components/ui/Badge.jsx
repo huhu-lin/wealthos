@@ -29,46 +29,103 @@ export function Badge({ text, color = C.accent }) {
   );
 }
 
-// ── 配置進度條 ────────────────────────────────────────────────
-// 顯示資產佔比 vs 目標佔比的差距，並計算需買/賣金額
+// ── 偏移指針 ─────────────────────────────────────────────────
+// 視覺化顯示「實際佔比偏離目標」的幅度
 // actual：實際百分比（0-100）
 // target：目標百分比（0-100）
 // total：帳戶總值（用來計算買賣金額）
 // value：該項目市值
-export function AllocBar({ actual, target, total, value }) {
+// driftThreshold：再平衡觸發門檻（預設 ±5%）
+export function AllocBar({ actual, target, total, value, driftThreshold = 5 }) {
   if (!total || !target) return null;
 
-  const diff    = actual - target;                        // 超過目標為正，不足為負
-  const diffAmt = value - (target / 100 * total);        // 超出/不足的金額
-  const barWidth = Math.min((actual / target) * 100, 130); // 進度條寬度上限 130%
-  // 顏色判斷：±1.5% 內綠，超標紅，不足金
-  const barColor = Math.abs(diff) < 1.5 ? C.accent : diff > 0 ? C.red : C.gold;
+  const diff    = actual - target;          // 偏移量（正=超配，負=不足）
+  const diffAmt = value - (target / 100 * total);
+
+  // 顏色：±1.5% 平衡綠，超過門檻紅/金，中間警示橙
+  const absD = Math.abs(diff);
+  const driftColor =
+    absD < 1.5              ? C.accent :
+    absD >= driftThreshold  ? (diff > 0 ? C.red : C.gold) :
+                              C.orange;
+
+  // 指針位置：以目標為中心，±driftThreshold 為量程兩端
+  // 超出量程時 clamp 到邊界
+  const range = Math.max(driftThreshold, absD + 1);  // 自動擴張量程
+  const needlePct = Math.min(Math.max((diff / range) * 50 + 50, 2), 98); // 0-100% 位置
+
+  // 狀態文字
+  const statusLabel = absD < 1.5 ? "平衡" : diff > 0 ? "超配" : "不足";
 
   return (
     <div style={{ marginTop: 10 }}>
-      {/* 數值文字列 */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 10 }}>
-        <span style={{ color: C.textMuted }}>
-          實際 <span style={{ color: C.text, fontWeight: 600 }}>{actual.toFixed(1)}%</span>
-          {"  "}目標 <span style={{ color: C.textMuted }}>{target.toFixed(1)}%</span>
-        </span>
-        <span style={{ color: barColor, fontWeight: 600 }}>
-          {diff > 0 ? "▲" : "▼"} {Math.abs(diff).toFixed(1)}%
-          （{diff > 0 ? "賣出" : "買入"} NT${fmt(Math.abs(diffAmt))}）
-        </span>
+      {/* ── 數值摘要列 ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, fontSize: 10 }}>
+        <div style={{ display: "flex", gap: 10 }}>
+          <span style={{ color: C.textMuted }}>
+            實際 <span style={{ color: C.text, fontWeight: 700 }}>{actual.toFixed(1)}%</span>
+          </span>
+          <span style={{ color: C.textMuted }}>
+            目標 <span style={{ color: C.textMuted, fontWeight: 600 }}>{target.toFixed(1)}%</span>
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{
+            background: driftColor + "20",
+            color: driftColor,
+            border: `1px solid ${driftColor}50`,
+            borderRadius: 4,
+            padding: "1px 6px",
+            fontSize: 10,
+            fontWeight: 700,
+          }}>
+            {statusLabel}
+          </span>
+          <span style={{ color: driftColor, fontWeight: 600 }}>
+            {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%
+            <span style={{ color: C.textMuted, fontWeight: 400 }}>
+              {" "}（{diff > 0 ? "可賣出" : "可買入"} NT${fmt(Math.abs(diffAmt))}）
+            </span>
+          </span>
+        </div>
       </div>
 
-      {/* 進度條本體 */}
-      <div style={{ height: 4, background: C.border, borderRadius: 3, overflow: "hidden" }}>
-        <div
-          className="wos-bar-fill"
-          style={{
-            height: "100%",
-            width: `${Math.min(barWidth, 100)}%`,
-            background: `linear-gradient(90deg, ${barColor}, ${barColor}AA)`,
-            borderRadius: 3,
-          }}
-        />
+      {/* ── 偏移指針軌道 ── */}
+      <div style={{ position: "relative", height: 20, marginBottom: 2 }}>
+        {/* 背景漸層軌道：左=不足(金)，中=平衡(綠)，右=超配(紅) */}
+        <div style={{
+          position: "absolute", top: 8, left: 0, right: 0, height: 4,
+          background: `linear-gradient(90deg, ${C.gold}60 0%, ${C.accent}80 45%, ${C.accent}80 55%, ${C.red}60 100%)`,
+          borderRadius: 3,
+        }} />
+        {/* 中心目標刻度線 */}
+        <div style={{
+          position: "absolute", top: 4, left: "50%", width: 2, height: 12,
+          background: C.textMuted + "80",
+          transform: "translateX(-50%)",
+          borderRadius: 1,
+        }} />
+        {/* 偏移指針菱形 */}
+        <div style={{
+          position: "absolute",
+          top: 4,
+          left: `${needlePct}%`,
+          transform: "translateX(-50%)",
+          width: 12,
+          height: 12,
+          background: driftColor,
+          borderRadius: "2px",
+          rotate: "45deg",
+          boxShadow: `0 0 6px ${driftColor}80`,
+          transition: "left 0.4s ease",
+        }} />
+      </div>
+
+      {/* ── 刻度標籤 ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.textDim, paddingTop: 2 }}>
+        <span style={{ color: C.gold }}>不足 -{range.toFixed(0)}%</span>
+        <span style={{ color: C.accent }}>目標 {target.toFixed(0)}%</span>
+        <span style={{ color: C.red }}>超配 +{range.toFixed(0)}%</span>
       </div>
     </div>
   );
