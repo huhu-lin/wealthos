@@ -36,7 +36,7 @@ export function Badge({ text, color = C.accent }) {
 // total：帳戶總值（用來計算買賣金額）
 // value：該項目市值
 // driftThreshold：再平衡觸發門檻（預設 ±5%）
-export function AllocBar({ actual, target, total, value, driftThreshold = 5 }) {
+export function AllocBar({ actual, target, total, value, driftThreshold = 5, usdRate = null }) {
   if (!total || !target) return null;
 
   const diff    = actual - target;          // 偏移量（正=超配，負=不足）
@@ -84,7 +84,7 @@ export function AllocBar({ actual, target, total, value, driftThreshold = 5 }) {
           <span style={{ color: driftColor, fontWeight: 600 }}>
             {diff >= 0 ? "+" : ""}{diff.toFixed(1)}%
             <span style={{ color: C.textMuted, fontWeight: 400 }}>
-              {" "}（{diff > 0 ? "可賣出" : "可買入"} NT${fmt(Math.abs(diffAmt))}）
+              {" "}（{diff > 0 ? "可賣出" : "可買入"} {usdRate ? `$${fmt(Math.abs(diffAmt / usdRate))} USD` : `NT$${fmt(Math.abs(diffAmt))}`}）
             </span>
           </span>
         </div>

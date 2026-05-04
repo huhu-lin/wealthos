@@ -263,28 +263,34 @@ export default function TWAccount({ assets, reload }) {
             點擊「＋ 新增」新增現金帳戶
           </div>
         </div>
-      ) : cash.map(a => (
-        <div key={a.id} className="wos-row" style={{
-          background: C.surface,
-          border: `1px solid ${C.border}`,
-          borderLeft: `3px solid ${C.purple}`,
-          borderRadius: 12,
-          padding: "14px 18px",
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{a.name}</div>
-            <div style={{ color: C.textMuted, fontSize: 11 }}>{a.note}</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ color: C.purple, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
-              NT${fmt(a.value_twd)}
+      ) : cash.map(a => {
+        const acctPct = total > 0 ? a.value_twd / total * 100 : 0;
+        const tgtPct  = (a.target || 0) * 100;
+        return (
+          <div key={a.id} className="wos-row" style={{
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            borderLeft: `3px solid ${C.purple}`,
+            borderRadius: 12,
+            padding: "14px 18px",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{a.name}</div>
+                <div style={{ color: C.textMuted, fontSize: 11 }}>{a.note}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ color: C.purple, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
+                  NT${fmt(a.value_twd)}
+                </div>
+                <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
+                <Btn onClick={() => del(a.id)}   color={C.red} outline small>刪除</Btn>
+              </div>
             </div>
-            <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
-            <Btn onClick={() => del(a.id)}   color={C.red} outline small>刪除</Btn>
+            {tgtPct > 0 && <AllocBar actual={acctPct} target={tgtPct} total={total} value={a.value_twd} />}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* ── 新增 / 編輯 Modal ─────────────────────────────── */}
       {modal && (
