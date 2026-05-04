@@ -1003,8 +1003,8 @@ function BacktestTab() {
           <span style={{color:C.text}}>0050、0056、006208、00878、00646、00631L、00692、00757</span>
         </div>
         <div style={{marginBottom:6}}>
-          <span style={{color:C.accent, fontWeight:600}}>⚡ 預載標的（秒出）｜美股：</span>
-          <span style={{color:C.text}}>SPY、QQQ、IWM、VOO、VTI、QLD、TQQQ、SSO、UPRO、SOXL、TECL、FNGU</span>
+          <span style={{color:C.accent, fontWeight:600}}>⚡ 預載標的（秒出）｜美股＋指數：</span>
+          <span style={{color:C.text}}>SPY、QQQ、IWM、VOO、VTI、QLD、TQQQ、SSO、UPRO、SOXL、TECL、FNGU、^TWII</span>
         </div>
         <div style={{color:C.textMuted}}>
           ⏳ <strong style={{color:C.gold}}>非預載標的</strong> 首次查詢需等待 30～90 秒（系統即時抓取），之後當日再查即秒出。
