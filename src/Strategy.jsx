@@ -129,25 +129,30 @@ async function fetchTWKline(ticker, days=720) {
   const bd = bucketDays(days);           // 用大 bucket 查快取（命中率高）
   const cacheKey = `${ticker.toUpperCase()}_TW`;
   const cached = await getKlineFromCache(cacheKey, bd);
-  if (cached) return filterByDays(cached, days); // 命中後精準切出所需天數
 
-  try {
-    const data = await fetchFromProxy(`/api/kline-tw?ticker=${encodeURIComponent(ticker)}&days=${bd}`);
-    let result = filterByDays(data, days);
-
-    // ── 補今日K棒（yfinance 收盤後有延遲，FinMind 當日即時）──
-    const today = new Date().toISOString().slice(0, 10);
-    const lastDate = result.length > 0 ? result[result.length - 1].date : null;
-    if (lastDate !== today) {
-      const todayCandle = await fetchTodayTWCandle(ticker);
-      if (todayCandle) result = [...result, todayCandle];
+  let result;
+  if (cached) {
+    result = filterByDays(cached, days); // 命中後精準切出所需天數
+  } else {
+    try {
+      const data = await fetchFromProxy(`/api/kline-tw?ticker=${encodeURIComponent(ticker)}&days=${bd}`);
+      result = filterByDays(data, days);
+    } catch(e) {
+      console.error(`[fetchTWKline] 失敗:`, e);
+      return [];
     }
-
-    return result;
-  } catch(e) {
-    console.error(`[fetchTWKline] 失敗:`, e);
-    return [];
   }
+
+  // ── 補今日K棒（無論來自快取或 Render，都嘗試補當日即時 K 棒）──
+  // yfinance 收盤後有延遲，FinMind 可提供台股當日 OHLCV
+  const today = new Date().toISOString().slice(0, 10);
+  const lastDate = result.length > 0 ? result[result.length - 1].date : null;
+  if (lastDate !== today) {
+    const todayCandle = await fetchTodayTWCandle(ticker);
+    if (todayCandle) result = [...result, todayCandle];
+  }
+
+  return result;
 }
 
 async function fetchUSKline(ticker, days=720) {
