@@ -684,11 +684,14 @@ function BacktestTab() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
+  const [withCost, setWithCost] = useState(false); // P-003：是否含交易成本
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
 
 
-  function simRebalance(closes, raw, triggerFn) {
+  // tradeCost: 每次再平衡扣除的交易成本比率（P-003）
+  // 0.585% = 手續費 0.1425%×2（買賣各一） + 證交稅 0.3%
+  function simRebalance(closes, raw, triggerFn, tradeCost=0) {
     let cash = params.amount * (1 - params.target);
     let shares = (params.amount * params.target) / closes[0];
     const equity = [{ date:raw[0].date, value:params.amount }];
@@ -696,9 +699,10 @@ function BacktestTab() {
     for (let i=1; i<closes.length; i++) {
       const totalNow = cash + shares * closes[i];
       if (triggerFn(i, totalNow, shares, closes[i])) {
-        const targetVal = totalNow * params.target;
+        const netTotal = totalNow * (1 - tradeCost); // 扣除交易成本後淨值
+        const targetVal = netTotal * params.target;
         shares = targetVal / closes[i];
-        cash = totalNow - targetVal;
+        cash = netTotal - targetVal;
         markers.push(raw[i].date);
       }
       equity.push({ date:raw[i].date, value:cash + shares*closes[i] });
@@ -821,31 +825,48 @@ function BacktestTab() {
     const kdj = calcKDJ(closes, highs, lows);
     const signals = checkSignals(closes, bb, kdj, params.j_entry, params.j_exit);
 
-    const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, alignedRaw, (i) => signals.some(s=>s.index===i));
-    const { equity: periodEquity, markers: periodMarkers } = simRebalance(closes, alignedRaw, (i) => i % params.period_days === 0);
+    // P-003：交易成本（每次再平衡扣 0.585%）
+    const tradeCost = withCost ? 0.00585 : 0;
+
+    const { equity: signalEquity, markers: signalMarkers } = simRebalance(closes, alignedRaw, (i) => signals.some(s=>s.index===i), tradeCost);
+    const { equity: periodEquity, markers: periodMarkers } = simRebalance(closes, alignedRaw, (i) => i % params.period_days === 0, tradeCost);
     const { equity: driftEquity, markers: driftMarkers } = simRebalance(closes, alignedRaw, (i, total, shares, price) => {
       const actualPct = (shares * price) / total * 100;
       return Math.abs(actualPct - params.target*100) >= params.drift_pct;
-    });
+    }, tradeCost);
 
     // ── P-002 非對稱：KDJ 只管買入，賣出改用偏移觸發 ──
-    // 買入訊號：KDJ 超賣 flag → J 值反彈（原 BUY 邏輯）
-    // 賣出/再平衡：25% 偏移觸發（不依賴 KDJ 過熱訊號）
     const buySigs = new Set(signals.filter(s=>s.type==='BUY').map(s=>s.index));
     const { equity: asymEquity, markers: asymMarkers } = simRebalance(closes, alignedRaw, (i, total, shares, price) => {
       if (buySigs.has(i)) return true;
       const actualPct = (shares * price) / total * 100;
       return Math.abs(actualPct - params.target*100) >= params.drift_pct;
-    });
+    }, tradeCost);
+
+    // ── P-001 年度再平衡：每 252 個交易日（≈1年）固定再平衡 ──
+    const { equity: annualEquity, markers: annualMarkers } = simRebalance(closes, alignedRaw, (i) => i % 252 === 0, tradeCost);
 
     const signalReturn = (signalEquity[signalEquity.length-1].value - params.amount) / params.amount * 100;
     const periodReturn = (periodEquity[periodEquity.length-1].value - params.amount) / params.amount * 100;
     const driftReturn  = (driftEquity[driftEquity.length-1].value - params.amount) / params.amount * 100;
     const asymReturn   = (asymEquity[asymEquity.length-1].value - params.amount) / params.amount * 100;
+    const annualReturn = (annualEquity[annualEquity.length-1].value - params.amount) / params.amount * 100;
     const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
-    // 計算統計指標
+    // P-004：台股加入 0050 含息作為第二基準（還原股價已含息再投資）
+    let bm2Raw = [];
+    if (!params.is_us) {
+      const bm2Ticker = "0050";
+      if (bm2Ticker.toUpperCase() !== (params.benchmark||"").toUpperCase()) {
+        try {
+          const fetched = await fetchTWKline(bm2Ticker, params.days);
+          bm2Raw = fetched.filter(d => d.date >= alignStart);
+        } catch(e) { bm2Raw = []; }
+      }
+    }
+    const bm2Return = bm2Raw.length ? (bm2Raw[bm2Raw.length-1].close - bm2Raw[0].close) / bm2Raw[0].close * 100 : null;
+
     // 建立 benchmark 每日資產值（初始金額相同，按收盤價縮放），用於勝率比較
     const bmInitShares = alignedBmRaw.length ? params.amount / alignedBmRaw[0].close : 0;
     const bmValueByDate = {};
@@ -869,8 +890,10 @@ function BacktestTab() {
     const driftStats = calcAnnualizedStats(driftVals, tradingDays, alignBmToEquity(driftEquity));
     const asymVals = asymEquity.map(e=>e.value);
     const asymStats = calcAnnualizedStats(asymVals, tradingDays, alignBmToEquity(asymEquity));
+    const annualVals = annualEquity.map(e=>e.value);
+    const annualStats = calcAnnualizedStats(annualVals, tradingDays, alignBmToEquity(annualEquity));
 
-    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, signalReturn, periodReturn, driftReturn, asymReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats });
+    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, bm2Raw, bm2Return, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -892,21 +915,30 @@ function BacktestTab() {
     const s1 = chart.addLineSeries({ color:C.accent,  lineWidth:2, title:"訊號再平衡" });
     const s2 = chart.addLineSeries({ color:C.orange,  lineWidth:2, lineStyle:0, title:`週期(${params.period_days}天)` });
     const s3 = chart.addLineSeries({ color:"#9B6DFF", lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
-    const s4 = chart.addLineSeries({ color:C.red,     lineWidth:2, lineStyle:0, title:`P-002 非對稱` });
+    const s4 = chart.addLineSeries({ color:C.red,     lineWidth:2, lineStyle:0, title:"KDJ買+偏移賣" });
+    const s5 = chart.addLineSeries({ color:"#00D9C0", lineWidth:1, lineStyle:2, title:"年度再平衡" }); // P-001
     s1.setData(result.signalEquity.map(e=>({ time:e.date, value:e.value })));
     s2.setData(result.periodEquity.map(e=>({ time:e.date, value:e.value })));
     s3.setData(result.driftEquity.map(e=>({ time:e.date, value:e.value })));
     s4.setData(result.asymEquity.map(e=>({ time:e.date, value:e.value })));
+    s5.setData(result.annualEquity.map(e=>({ time:e.date, value:e.value })));
 
     s1.setMarkers(result.signalMarkers.map(date=>({ time:date, position:'aboveBar', color:C.accent, shape:'circle', text:'' })));
     s2.setMarkers(result.periodMarkers.map(date=>({ time:date, position:'aboveBar', color:C.orange, shape:'circle', text:'' })));
     s3.setMarkers(result.driftMarkers.map(date=>({ time:date, position:'belowBar', color:'#9B6DFF', shape:'circle', text:'' })));
     s4.setMarkers(result.asymMarkers.map(date=>({ time:date, position:'belowBar', color:C.red, shape:'arrowUp', text:'' })));
+    s5.setMarkers(result.annualMarkers.map(date=>({ time:date, position:'aboveBar', color:"#00D9C0", shape:'circle', text:'' })));
 
     if (result.bmRaw?.length) {
       const bmInitShares = params.amount / result.bmRaw[0].close;
       const bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
       bmLine.setData(result.bmRaw.map(d=>({ time:d.date, value:bmInitShares*d.close })));
+    }
+    // P-004：0050 含息第二基準線
+    if (result.bm2Raw?.length) {
+      const bm2Shares = params.amount / result.bm2Raw[0].close;
+      const bm2Line = chart.addLineSeries({ color:"#4D9EFF60", lineWidth:1, lineStyle:3, title:"0050含息" });
+      bm2Line.setData(result.bm2Raw.map(d=>({ time:d.date, value:bm2Shares*d.close })));
     }
 
     chart.timeScale().fitContent();
@@ -931,10 +963,10 @@ function BacktestTab() {
   return (
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
-      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>四種再平衡策略比較｜訊號 vs 週期 vs 偏移 vs <span style={{color:C.red, fontWeight:600}}>P-002 非對稱</span>（KDJ買入＋偏移賣出）｜<span style={{color:C.blue}}>還原股價（除息/分割調整）</span></div>
+      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>五種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span>｜台股自動加入 <span style={{color:"#4D9EFF", fontWeight:600}}>0050含息(P-004)</span> 雙基準</div>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
-        <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%（無原型資料時 fallback 為正報酬日數%）。<strong style={{color:C.gold}}>注意：</strong> KDJ 計算採收盤價高低（非完整燭台），回測不含交易成本與滑點。
+        <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%。KDJ 計算採 OHLCV 實際最高/最低價（業界標準）。<strong style={{color:C.gold}}>注意：</strong> 還原股價已含息再投資，回測不含滑點；交易成本可用下方 P-003 開關切換。
       </Card>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface2, border:`1px solid ${C.border}`, fontSize:11, lineHeight:"1.7"}}>
@@ -1078,8 +1110,18 @@ function BacktestTab() {
             >{label}</button>
           ))}
         </div>
-        <div style={{display:"flex", alignItems:"center", gap:12}}>
+        <div style={{display:"flex", alignItems:"center", gap:12, flexWrap:"wrap"}}>
           <Btn onClick={runBacktest} color={loading?C.textMuted:C.accent}>{loading?"計算中...":"▶ 執行回測"}</Btn>
+          <label style={{display:"flex", alignItems:"center", gap:6, cursor:"pointer"}}>
+            <input
+              type="checkbox" checked={withCost}
+              onChange={e=>setWithCost(e.target.checked)}
+              style={{accentColor:C.gold, width:14, height:14, cursor:"pointer"}}
+            />
+            <span style={{color: withCost ? C.gold : C.textMuted, fontSize:12, fontWeight: withCost ? 600 : 400}}>
+              📉 P-003 含交易成本（0.585%/次 = 手續費×2 + 證交稅）
+            </span>
+          </label>
           {loadingMsg && <span style={{color:C.accent, fontSize:12}}>{loadingMsg}</span>}
         </div>
       </Card>
@@ -1111,6 +1153,11 @@ function BacktestTab() {
             )}
           </div>
 
+          {result.withCost && (
+            <div style={{background:C.gold+"12", border:`1px solid ${C.gold}40`, borderRadius:8, padding:"8px 14px", marginBottom:12, fontSize:11, color:C.gold}}>
+              📉 <strong>P-003 交易成本模式</strong>：每次再平衡扣除 0.585%（手續費 0.1425%×2 + 證交稅 0.3%），再平衡次數越多成本越高。
+            </div>
+          )}
           <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16}}>
             {[
               {
@@ -1138,23 +1185,39 @@ function BacktestTab() {
                 stats: result.driftStats
               },
               {
-                label:"⚡ P-002 非對稱",
+                label:"⚡ KDJ買+偏移賣 (P-002)",
                 pct:`${result.asymReturn>=0?"+":""}${result.asymReturn.toFixed(1)}%`,
                 amt: result.asymReturn/100*params.amount,
                 color:C.red,
-                sub:`${result.asymMarkers.length} 次｜KDJ買+偏移賣`,
+                sub:`${result.asymMarkers.length} 次再平衡`,
                 stats: result.asymStats
               },
               {
-                label:"📈 原型ETF買進持有",
+                label:"🗓 年度再平衡 (P-001)",
+                pct:`${result.annualReturn>=0?"+":""}${result.annualReturn.toFixed(1)}%`,
+                amt: result.annualReturn/100*params.amount,
+                color:"#00D9C0",
+                sub:`${result.annualMarkers.length} 次｜每252交易日`,
+                stats: result.annualStats
+              },
+              {
+                label:`📈 ${params.benchmark||"原型ETF"} 買進持有`,
                 pct: result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-",
                 amt: result.bmReturn!=null ? result.bmReturn/100*params.amount : null,
                 color:C.blue,
-                sub:"",
+                sub:"還原股價（含息再投資）",
                 stats: null
               },
+              ...(result.bm2Raw?.length ? [{
+                label:"📊 0050 含息 (P-004)",
+                pct: result.bm2Return!=null?`${result.bm2Return>=0?"+":""}${result.bm2Return.toFixed(1)}%`:"-",
+                amt: result.bm2Return!=null ? result.bm2Return/100*params.amount : null,
+                color:"#4D9EFF",
+                sub:"0050 買進持有（還原含息）",
+                stats: null
+              }] : []),
               {
-                label:"最大回撤(訊號)",
+                label:"最大回撤（訊號策略）",
                 pct:`-${result.maxDD.toFixed(1)}%`,
                 amt: -result.maxDD/100*params.amount,
                 color:C.gold,
@@ -1184,7 +1247,7 @@ function BacktestTab() {
           </div>
           <Card style={{padding:12, marginBottom:16}}>
             <div style={{display:"flex", gap:16, marginBottom:8, flexWrap:"wrap"}}>
-              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["P-002 非對稱",C.red],["原型ETF",C.blue]].map(([l,c])=>(
+              {[["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],["KDJ買+偏移賣",C.red],["年度再平衡","#00D9C0"],["原型ETF",C.blue],["0050含息","#4D9EFF60"]].map(([l,c])=>(
                 <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
                   <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
                 </div>
