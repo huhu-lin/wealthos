@@ -874,30 +874,6 @@ function BacktestTab() {
     const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
     const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
 
-    // P-004：台股加入大盤基準（首選 ^TWII 加權指數；^TWII 冷啟動空回傳時降級為 0050）
-    // ^TWII：純加權股價指數，走 US 端點（不加 .TW），不含股息，每年低估約 3~4%
-    // 0050 fallback：還原股價已含股息再投資，等同含息報酬基準，但含 0.43% 管理費
-    let bm2Raw = [];
-    let bm2Label = "加權指數（^TWII）";
-    if (!params.is_us) {
-      try {
-        const twiiData = await fetchUSKline("^TWII", params.days);
-        if (twiiData.length > 10) {
-          bm2Raw = twiiData.filter(d => d.date >= alignStart);
-          bm2Label = "加權指數（^TWII，不含股息）";
-        } else {
-          // ^TWII 未命中快取、Render 冷啟動 → fallback 到 0050（預載，秒出）
-          const data0050 = await fetchTWKline("0050", params.days);
-          bm2Raw = data0050.filter(d => d.date >= alignStart);
-          bm2Label = "0050 含息（大盤代理）";
-        }
-      } catch(e) {
-        bm2Raw = [];
-        bm2Label = "";
-      }
-    }
-    const bm2Return = bm2Raw.length ? (bm2Raw[bm2Raw.length-1].close - bm2Raw[0].close) / bm2Raw[0].close * 100 : null;
-
     // 建立 benchmark 每日資產值（初始金額相同，按收盤價縮放），用於勝率比較
     const bmInitShares = alignedBmRaw.length ? params.amount / alignedBmRaw[0].close : 0;
     const bmValueByDate = {};
@@ -924,7 +900,7 @@ function BacktestTab() {
     const annualVals = annualEquity.map(e=>e.value);
     const annualStats = calcAnnualizedStats(annualVals, tradingDays, alignBmToEquity(annualEquity));
 
-    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, bm2Raw, bm2Return, bm2Label, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
+    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -965,13 +941,6 @@ function BacktestTab() {
       const bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
       bmLine.setData(result.bmRaw.map(d=>({ time:d.date, value:bmInitShares*d.close })));
     }
-    // P-004：大盤基準線（^TWII 或 0050 fallback，依 bm2Label 顯示）
-    if (result.bm2Raw?.length) {
-      const bm2Shares = params.amount / result.bm2Raw[0].close;
-      const bm2Line = chart.addLineSeries({ color:"#4D9EFF80", lineWidth:1, lineStyle:3, title: result.bm2Label || "大盤基準" });
-      bm2Line.setData(result.bm2Raw.map(d=>({ time:d.date, value:bm2Shares*d.close })));
-    }
-
     chart.timeScale().fitContent();
     return () => { if(chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; } };
   }, [result]);
@@ -994,7 +963,7 @@ function BacktestTab() {
   return (
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
-      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>五種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span>｜台股自動加入 <span style={{color:"#4D9EFF", fontWeight:600}}>加權指數^TWII(P-004)</span> 雙基準</div>
+      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>五種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span></div>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
         <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%。KDJ 計算採 OHLCV 實際最高/最低價（業界標準）。<strong style={{color:C.gold}}>注意：</strong> 還原股價已含息再投資，回測不含滑點；P-003 交易成本：買入 0.1425%、賣出 0.4425%（含證交稅），僅對交易金額計算。
@@ -1238,14 +1207,6 @@ function BacktestTab() {
                 sub:"還原股價（含息再投資）",
                 stats: null
               },
-              ...(result.bm2Raw?.length ? [{
-                label:`📊 大盤基準 (P-004)`,
-                pct: result.bm2Return!=null?`${result.bm2Return>=0?"+":""}${result.bm2Return.toFixed(1)}%`:"-",
-                amt: result.bm2Return!=null ? result.bm2Return/100*params.amount : null,
-                color:"#4D9EFF",
-                sub: result.bm2Label || "大盤基準",
-                stats: null
-              }] : []),
               {
                 label:"最大回撤（訊號策略）",
                 pct:`-${result.maxDD.toFixed(1)}%`,
@@ -1281,7 +1242,6 @@ function BacktestTab() {
                 ["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],
                 ["KDJ買+偏移賣",C.red],["年度再平衡","#00D9C0"],
                 [`${params.benchmark||"原型ETF"}`,C.blue],
-                ...(result.bm2Raw?.length ? [[result.bm2Label||"大盤基準","#4D9EFF80"]] : []),
               ].map(([l,c])=>(
                 <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
                   <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
