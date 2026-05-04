@@ -107,6 +107,24 @@ function filterByDays(data, days) {
   return data.filter(d => d.date >= cutoffStr);
 }
 
+// 從 FinMind 補今日台股 OHLCV（yfinance 有延遲時使用）
+async function fetchTodayTWCandle(ticker) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const url = `/api/finmind-price?dataset=TaiwanStockPrice&data_id=${encodeURIComponent(ticker)}&start=${today}&end=${today}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json.data?.length) return null;
+    const d = json.data[json.data.length - 1];
+    // FinMind 欄位：max=最高, min=最低
+    if (!d.close) return null;
+    return { date: d.date, open: d.open, high: d.max, low: d.min, close: d.close };
+  } catch(e) {
+    return null;
+  }
+}
+
 async function fetchTWKline(ticker, days=720) {
   const bd = bucketDays(days);           // 用大 bucket 查快取（命中率高）
   const cacheKey = `${ticker.toUpperCase()}_TW`;
@@ -115,7 +133,17 @@ async function fetchTWKline(ticker, days=720) {
 
   try {
     const data = await fetchFromProxy(`/api/kline-tw?ticker=${encodeURIComponent(ticker)}&days=${bd}`);
-    return filterByDays(data, days);
+    let result = filterByDays(data, days);
+
+    // ── 補今日K棒（yfinance 收盤後有延遲，FinMind 當日即時）──
+    const today = new Date().toISOString().slice(0, 10);
+    const lastDate = result.length > 0 ? result[result.length - 1].date : null;
+    if (lastDate !== today) {
+      const todayCandle = await fetchTodayTWCandle(ticker);
+      if (todayCandle) result = [...result, todayCandle];
+    }
+
+    return result;
   } catch(e) {
     console.error(`[fetchTWKline] 失敗:`, e);
     return [];
