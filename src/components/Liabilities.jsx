@@ -128,9 +128,9 @@ export default function Liabilities({ liabilities, reload }) {
             borderRadius: 12,
             padding: "14px 18px",
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5, flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 700, fontSize: 14 }}>{l.name}</span>
                   <Badge text={l.category}         color={C.red} />
                   {l.rate > 0    && <Badge text={`${l.rate}%`}           color={C.orange} />}
@@ -142,7 +142,7 @@ export default function Liabilities({ liabilities, reload }) {
                   {l.due_day > 0  && ` ｜ 每月${l.due_day}日`}
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <div style={{ color: C.red, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
                   NT${fmt(l.value)}
                 </div>

@@ -369,6 +369,7 @@ export default function App() {
               twAssets={twAssets} usAssets={usAssets}
               cryptoAssets={cryptoAssets} otherAssets={otherAssets}
               liabilities={liabilities} snapshots={snapshots} usdRate={usdRate}
+              onTabChange={setTab}
             />
           )}
           {tab === "tw"       && <TWAccount     assets={twAssets}     reload={load} />}

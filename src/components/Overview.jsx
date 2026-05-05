@@ -31,7 +31,7 @@ import Card        from "./ui/Card";
 import KPI         from "./ui/KPI";
 import MarketBrief from "./MarketBrief";
 
-export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, snapshots, usdRate }) {
+export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, snapshots, usdRate, onTabChange }) {
   const winWidth = useWindowWidth();
   const isMobile = winWidth <= 480;
 
@@ -224,23 +224,32 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
         </div>
       )}
 
-      {/* ── 分類資產卡 ───────────────────────────────────── */}
+      {/* ── 分類資產卡（可點擊跳轉對應分頁）─────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         {[
-          { label: "🇹🇼  台股",   value: twTotal,     color: C.accent },
-          { label: "🇺🇸  美股",   value: usTotal,     color: C.blue },
-          { label: "₿  加密貨幣", value: cryptoTotal, color: C.gold },
-          { label: "🏠  其他",   value: otherTotal,  color: C.purple },
+          { label: "🇹🇼  台股",   value: twTotal,     color: C.accent, tab: "tw"     },
+          { label: "🇺🇸  美股",   value: usTotal,     color: C.blue,   tab: "us"     },
+          { label: "₿  加密貨幣", value: cryptoTotal, color: C.gold,   tab: "crypto" },
+          { label: "🏠  其他",   value: otherTotal,  color: C.purple, tab: "other"  },
         ].map(x => (
-          <div key={x.label} className="wos-row" style={{
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderLeft: `3px solid ${x.color}`,
-            borderRadius: 12,
-            padding: "12px 16px",
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-          }}>
-            <div style={{ color: C.textMuted, fontSize: 12, fontWeight: 500 }}>{x.label}</div>
+          <div
+            key={x.label}
+            className="wos-row"
+            onClick={() => onTabChange?.(x.tab)}
+            style={{
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              borderLeft: `3px solid ${x.color}`,
+              borderRadius: 12,
+              padding: "12px 16px",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              cursor: onTabChange ? "pointer" : "default",
+            }}
+          >
+            <div style={{ color: C.textMuted, fontSize: 12, fontWeight: 500 }}>
+              {x.label}
+              {onTabChange && <span style={{ color: x.color, fontSize: 9, marginLeft: 4, opacity: 0.7 }}>›</span>}
+            </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ color: x.color, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 14 }}>
                 NT${fmt(x.value)}

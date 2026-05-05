@@ -165,7 +165,7 @@ export default function TWAccount({ assets, reload }) {
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
       {/* ── KPI 摘要 ─────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+      <div className="wos-grid-3">
         <KPI label="台股總值"   value={total}                                     color={C.accent} />
         <KPI label="ETF / 股票" value={etfs.reduce((s, x) => s + x.value_twd, 0)} color={C.blue} />
         <KPI label="台幣現金"   value={cash.reduce((s, x) => s + x.value_twd, 0)} color={C.purple} />
