@@ -30,16 +30,8 @@ jobs:
 
           echo "HTTP Status: $STATUS"
           echo "Response:"
-          cat /tmp/update_response.json | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    print(f'  成功: {d.get(\"successCount\", \"?\")} 筆')
-    print(f'  失敗: {d.get(\"failCount\", \"?\")} 筆')
-    print(f'  USD/TWD: {d.get(\"usdRate\", \"?\")}')
-except:
-    pass
-" 2>/dev/null || cat /tmp/update_response.json
+          jq -r '"  成功: \(.successCount // "?") 筆 | 失敗: \(.failCount // "?") 筆 | USD/TWD: \(.usdRate // "?")"' \
+            /tmp/update_response.json 2>/dev/null || cat /tmp/update_response.json
 
           if [ "$STATUS" != "200" ]; then
             echo "❌ 更新失敗 (HTTP $STATUS)"
