@@ -200,7 +200,7 @@ export default function GlobalStyles() {
         gap: 10px;
         margin-bottom: 16px;
       }
-      @media (max-width: 500px) {
+      @media (max-width: 320px) {
         .wos-result-grid { grid-template-columns: 1fr; }
       }
 

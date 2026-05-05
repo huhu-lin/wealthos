@@ -718,6 +718,10 @@ function BacktestTab() {
   const [withCost, setWithCost] = useState(false); // P-003：是否含交易成本
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
+  const seriesRefs = useRef({});
+  const [visibleLines, setVisibleLines] = useState({
+    signal:true, period:true, drift:true, asym:true, annual:true, bm:true, dd:true,
+  });
 
 
   // P-003 交易成本（方向感知）：
@@ -891,7 +895,12 @@ function BacktestTab() {
     const asymReturn   = (asymEquity[asymEquity.length-1].value - params.amount) / params.amount * 100;
     const annualReturn = (annualEquity[annualEquity.length-1].value - params.amount) / params.amount * 100;
     const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
-    const maxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
+    const signalMaxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
+    const periodMaxDD = calcMaxDrawdown(periodEquity.map(e=>e.value));
+    const driftMaxDD  = calcMaxDrawdown(driftEquity.map(e=>e.value));
+    const asymMaxDD   = calcMaxDrawdown(asymEquity.map(e=>e.value));
+    const annualMaxDD = calcMaxDrawdown(annualEquity.map(e=>e.value));
+    const maxDD = signalMaxDD; // backward compat
 
     // 建立 benchmark 每日資產值（初始金額相同，按收盤價縮放），用於勝率比較
     const bmInitShares = alignedBmRaw.length ? params.amount / alignedBmRaw[0].close : 0;
@@ -919,38 +928,47 @@ function BacktestTab() {
     const annualVals = annualEquity.map(e=>e.value);
     const annualStats = calcAnnualizedStats(annualVals, tradingDays, alignBmToEquity(annualEquity));
 
-    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
+    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, signalMaxDD, periodMaxDD, driftMaxDD, asymMaxDD, annualMaxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
     setLoadingMsg("");
     setLoading(false);
   }
 
+  // ── 圖表建構 useEffect（result / isMobile 變化時重建）──────
   useEffect(() => {
     if (!result || !chartRef.current) return;
     if (chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; }
+    seriesRefs.current = {};
 
     const chart = createChart(chartRef.current, {
       layout: { background:{ color:C.surface2 }, textColor:C.textMuted },
       grid: { vertLines:{ color:C.border }, horzLines:{ color:C.border } },
       rightPriceScale: { borderColor:C.border },
+      leftPriceScale: {
+        visible: true,
+        borderColor: C.border,
+        scaleMargins: { top: 0.75, bottom: 0 }, // 回撤曲線占下方 25%
+      },
       timeScale: { borderColor:C.border },
       localization: {
         priceFormatter: (price) => {
           if (price >= 10000000) return (price / 10000).toFixed(0) + '萬';
           if (price >= 1000000)  return (price / 10000).toFixed(1) + '萬';
           if (price >= 10000)    return (price / 10000).toFixed(2) + '萬';
+          if (price <= 0)        return price.toFixed(1) + '%';
           return price.toFixed(0);
         },
       },
       width: chartRef.current.clientWidth,
-      height: isMobile ? 240 : 350,
+      height: isMobile ? 260 : 380,
     });
     chartInstance.current = chart;
 
+    // ── 資產曲線（右 Y 軸）──────────────────────────────────
     const s1 = chart.addLineSeries({ color:C.accent,  lineWidth:2, title:"訊號再平衡" });
     const s2 = chart.addLineSeries({ color:C.orange,  lineWidth:2, lineStyle:0, title:`週期(${params.period_days}天)` });
     const s3 = chart.addLineSeries({ color:"#9B6DFF", lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
     const s4 = chart.addLineSeries({ color:C.red,     lineWidth:2, lineStyle:0, title:"KDJ買+偏移賣" });
-    const s5 = chart.addLineSeries({ color:"#00D9C0", lineWidth:1, lineStyle:2, title:"年度再平衡" }); // P-001
+    const s5 = chart.addLineSeries({ color:"#00D9C0", lineWidth:1, lineStyle:2, title:"年度再平衡" });
     s1.setData(result.signalEquity.map(e=>({ time:e.date, value:e.value })));
     s2.setData(result.periodEquity.map(e=>({ time:e.date, value:e.value })));
     s3.setData(result.driftEquity.map(e=>({ time:e.date, value:e.value })));
@@ -963,15 +981,64 @@ function BacktestTab() {
     s4.setMarkers(result.asymMarkers.map(date=>({ time:date, position:'belowBar', color:C.red, shape:'arrowUp', text:'' })));
     s5.setMarkers(result.annualMarkers.map(date=>({ time:date, position:'aboveBar', color:"#00D9C0", shape:'circle', text:'' })));
 
+    // ── Benchmark ──────────────────────────────────────────
+    let bmLine = null;
     if (result.bmRaw?.length) {
       const bmInitShares = params.amount / result.bmRaw[0].close;
-      const bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
+      bmLine = chart.addLineSeries({ color:C.blue, lineWidth:1, lineStyle:2, title:params.benchmark });
       bmLine.setData(result.bmRaw.map(d=>({ time:d.date, value:bmInitShares*d.close })));
     }
+
+    // ── 訊號策略 Underwater 回撤曲線（左 Y 軸，負值 %）───────
+    let peak = result.signalEquity[0].value;
+    const ddData = result.signalEquity.map(e => {
+      if (e.value > peak) peak = e.value;
+      return { time: e.date, value: -((peak - e.value) / peak * 100) };
+    });
+    const ddSeries = chart.addLineSeries({
+      color: C.red + "99",
+      lineWidth: 1,
+      lineStyle: 0,
+      priceScaleId: 'left',
+      priceFormat: { type: 'custom', formatter: (p) => `${p.toFixed(1)}%` },
+      title: "回撤%",
+      lastValueVisible: true,
+      priceLineVisible: false,
+    });
+    ddSeries.setData(ddData);
+
+    // 儲存 series ref，供 toggle useEffect 使用
+    seriesRefs.current = { s1, s2, s3, s4, s5, bm: bmLine, dd: ddSeries };
+
+    // 套用當前 visibleLines 狀態（避免重建後 toggle 狀態遺失）
+    const vl = visibleLines;
+    s1.applyOptions({ visible: vl.signal });
+    s2.applyOptions({ visible: vl.period });
+    s3.applyOptions({ visible: vl.drift });
+    s4.applyOptions({ visible: vl.asym });
+    s5.applyOptions({ visible: vl.annual });
+    if (bmLine) bmLine.applyOptions({ visible: vl.bm });
+    ddSeries.applyOptions({ visible: vl.dd });
+
     chart.timeScale().fitContent();
-    return () => { if(chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; } };
-  // isMobile 變化時重建圖表以套用新高度
+    return () => {
+      if (chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; }
+      seriesRefs.current = {};
+    };
   }, [result, isMobile]);
+
+  // ── Toggle useEffect（只更新 visibility，不重建圖表）────────
+  useEffect(() => {
+    const r = seriesRefs.current;
+    if (!r.s1) return;
+    r.s1.applyOptions({ visible: visibleLines.signal });
+    r.s2.applyOptions({ visible: visibleLines.period });
+    r.s3.applyOptions({ visible: visibleLines.drift });
+    r.s4.applyOptions({ visible: visibleLines.asym });
+    r.s5.applyOptions({ visible: visibleLines.annual });
+    if (r.bm) r.bm.applyOptions({ visible: visibleLines.bm });
+    if (r.dd) r.dd.applyOptions({ visible: visibleLines.dd });
+  }, [visibleLines]);
 
   const p = (key, label, type="number", extra={}) => (
     <div>
@@ -1193,7 +1260,8 @@ function BacktestTab() {
                 amt: result.signalReturn/100*params.amount,
                 color:C.accent,
                 sub:`${result.signalMarkers.length} 次再平衡`,
-                stats: result.signalStats
+                stats: result.signalStats,
+                maxDD: result.signalMaxDD,
               },
               {
                 label:"🔄 週期再平衡",
@@ -1201,7 +1269,8 @@ function BacktestTab() {
                 amt: result.periodReturn/100*params.amount,
                 color:C.orange,
                 sub:`${result.periodMarkers.length} 次再平衡`,
-                stats: result.periodStats
+                stats: result.periodStats,
+                maxDD: result.periodMaxDD,
               },
               {
                 label:"📊 比例偏移再平衡",
@@ -1209,7 +1278,8 @@ function BacktestTab() {
                 amt: result.driftReturn/100*params.amount,
                 color:"#9B6DFF",
                 sub:`${result.driftMarkers.length} 次再平衡`,
-                stats: result.driftStats
+                stats: result.driftStats,
+                maxDD: result.driftMaxDD,
               },
               {
                 label:"⚡ KDJ買+偏移賣 (P-002)",
@@ -1217,7 +1287,8 @@ function BacktestTab() {
                 amt: result.asymReturn/100*params.amount,
                 color:C.red,
                 sub:`${result.asymMarkers.length} 次再平衡`,
-                stats: result.asymStats
+                stats: result.asymStats,
+                maxDD: result.asymMaxDD,
               },
               {
                 label:"🗓 年度再平衡 (P-001)",
@@ -1225,7 +1296,8 @@ function BacktestTab() {
                 amt: result.annualReturn/100*params.amount,
                 color:"#00D9C0",
                 sub:`${result.annualMarkers.length} 次｜每252交易日`,
-                stats: result.annualStats
+                stats: result.annualStats,
+                maxDD: result.annualMaxDD,
               },
               {
                 label:`📈 ${params.benchmark||"原型ETF"} 買進持有`,
@@ -1233,17 +1305,10 @@ function BacktestTab() {
                 amt: result.bmReturn!=null ? result.bmReturn/100*params.amount : null,
                 color:C.blue,
                 sub:"還原股價（含息再投資）",
-                stats: null
+                stats: null,
+                maxDD: null,
               },
-              {
-                label:"最大回撤（訊號策略）",
-                pct:`-${result.maxDD.toFixed(1)}%`,
-                amt: -result.maxDD/100*params.amount,
-                color:C.gold,
-                sub:"",
-                stats: null
-              },
-            ].map(({label, pct, amt, color, sub, stats})=>(
+            ].map(({label, pct, amt, color, sub, stats, maxDD})=>(
               <Card key={label} style={{padding:"12px 14px", textAlign:"center"}}>
                 <div style={{color:C.textMuted, fontSize:11, marginBottom:6}}>{label}</div>
                 <div style={{color, fontWeight:700, fontSize:16}}>{pct}</div>
@@ -1258,23 +1323,43 @@ function BacktestTab() {
                     <div>夏普: {stats.sharpe.toFixed(2)}</div>
                     <div>波動: {(stats.annVol*100).toFixed(1)}%</div>
                     <div>勝率: {stats.winRate.toFixed(0)}%</div>
+                    {maxDD!=null && <div style={{color:C.red}}>回撤: -{maxDD.toFixed(1)}%</div>}
                   </div>
                 )}
                 {sub && <div style={{color:C.textMuted, fontSize:11, marginTop:4}}>{sub}</div>}
               </Card>
             ))}
           </div>
+
+          {/* ── 圖表 Toggle 開關 ───────────────────────────────── */}
           <Card style={{padding:12, marginBottom:16}}>
-            <div style={{display:"flex", gap:16, marginBottom:8, flexWrap:"wrap"}}>
+            <div style={{display:"flex", flexWrap:"wrap", gap:6, marginBottom:10}}>
               {[
-                ["訊號再平衡",C.accent],["週期再平衡",C.orange],["比例偏移","#9B6DFF"],
-                ["KDJ買+偏移賣",C.red],["年度再平衡","#00D9C0"],
-                [`${params.benchmark||"原型ETF"}`,C.blue],
-              ].map(([l,c])=>(
-                <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
-                  <div style={{width:14, height:2, background:c}}/><span style={{color:C.textMuted, fontSize:11}}>{l}</span>
-                </div>
-              ))}
+                { key:"signal", label:"訊號再平衡",    color:C.accent  },
+                { key:"period", label:"週期再平衡",    color:C.orange  },
+                { key:"drift",  label:"比例偏移",      color:"#9B6DFF" },
+                { key:"asym",   label:"KDJ+偏移賣",    color:C.red     },
+                { key:"annual", label:"年度再平衡",    color:"#00D9C0" },
+                { key:"bm",     label:params.benchmark||"原型ETF", color:C.blue },
+                { key:"dd",     label:"回撤曲線",      color:C.red+"99"},
+              ].map(({ key, label, color }) => {
+                const on = visibleLines[key];
+                return (
+                  <button key={key}
+                    onClick={() => setVisibleLines(v => ({ ...v, [key]: !v[key] }))}
+                    style={{
+                      background: on ? color+"22" : "transparent",
+                      border: `1px solid ${on ? color+"99" : C.border}`,
+                      color: on ? color : C.textMuted,
+                      borderRadius:6, padding:"3px 9px", fontSize:11, cursor:"pointer",
+                      display:"flex", alignItems:"center", gap:5,
+                      transition:"all 0.15s",
+                    }}>
+                    <div style={{width:14, height:2, background: on ? color : C.border, borderRadius:1}}/>
+                    {label}
+                  </button>
+                );
+              })}
             </div>
             <div ref={chartRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
           </Card>

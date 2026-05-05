@@ -164,7 +164,7 @@ export default function USAccount({ assets, usdRate, reload }) {
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
       {/* ── KPI 摘要（台幣 + 美元 + 匯率）──────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+      <div className="wos-grid-3">
         <KPI label="美股總值(TWD)" value={total}                  color={C.blue} />
         <KPI label="美股總值(USD)" value={totalUSD.toFixed(0)} prefix="$" color={C.blue} />
         <KPI label="匯率 USD/TWD"  value={usdRate.toFixed(2)}  prefix="" color={C.textMuted} />
