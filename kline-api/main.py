@@ -2,9 +2,16 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from supabase import create_client
 import os, json
+
+# ── 時區常數 ─────────────────────────────────────────────────
+TWN = timezone(timedelta(hours=8))   # UTC+8 台灣時區
+
+def twn_today() -> str:
+    """取得台灣時區今日日期字串（YYYY-MM-DD）"""
+    return datetime.now(TWN).strftime("%Y-%m-%d")
 
 app = FastAPI()
 
@@ -35,13 +42,16 @@ CACHE_TABLE = "kline_cache"
 def get_cache(ticker: str, days: int):
     """
     從 Supabase 讀快取。
-    台股收盤時間為 UTC 05:30（13:30 TWN）。
-    若快取寫入時間早於收盤時間，且現在已過收盤，視為過期不使用。
+    日期 key 使用台灣時區（UTC+8），與用戶瀏覽器日期一致，
+    解決 daily-precache 在 UTC 22:00 寫入但用戶在台灣次日使用時 key 不吻合的問題。
+
+    台股收盤時間 TWN 13:30（UTC 05:30）。
+    若快取寫在台股收盤前且現在已過收盤，視為過期強制重抓。
     """
     if not sb:
         return None
     try:
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        today = twn_today()   # ← 改用台灣時區日期
         res = sb.table(CACHE_TABLE).select("*") \
             .eq("ticker", ticker) \
             .eq("days", days) \
@@ -49,18 +59,17 @@ def get_cache(ticker: str, days: int):
             .execute()
         if res.data:
             now_utc = datetime.utcnow()
-            # 台股收盤時間 UTC 05:30，yfinance 更新通常需再等 30 分鐘 → 06:00 UTC
+            # 台股收盤 UTC 05:30，yfinance 更新通常需再等 30 分鐘 → UTC 06:00
             tw_close_utc = now_utc.replace(hour=6, minute=0, second=0, microsecond=0)
-            # 解析快取寫入時間
             created_str = res.data[0].get("created_at", "")
             try:
                 created_at = datetime.fromisoformat(created_str.replace("+00:00", ""))
             except Exception:
-                created_at = now_utc  # 解析失敗就當作新鮮的
+                created_at = now_utc  # 解析失敗當作新鮮的
 
-            # 快取寫在收盤前 + 現在已過收盤 → 強制過期
+            # 快取寫在收盤前 + 現在已過收盤 → 強制過期（確保取到當日收盤資料）
             if created_at < tw_close_utc and now_utc >= tw_close_utc:
-                print(f"[cache stale] {ticker} cached before close ({created_at.strftime('%H:%M')} UTC), refreshing")
+                print(f"[cache stale] {ticker} cached before TW close ({created_at.strftime('%H:%M')} UTC), refreshing")
                 return None
 
             return json.loads(res.data[0]["data"])
@@ -69,18 +78,21 @@ def get_cache(ticker: str, days: int):
     return None
 
 def set_cache(ticker: str, days: int, data: list):
-    """寫入 Supabase 快取"""
+    """
+    寫入 Supabase 快取。
+    日期 key 使用台灣時區（UTC+8），與 get_cache 一致。
+    """
     if not sb:
         return
     try:
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        # upsert：同 ticker+days+date 就更新
+        today = twn_today()   # ← 改用台灣時區日期
         sb.table(CACHE_TABLE).upsert({
             "ticker": ticker,
             "days": days,
             "cached_date": today,
             "data": json.dumps(data)
         }, on_conflict="ticker,days,cached_date").execute()
+        print(f"[cache set] {ticker} days={days} cached_date={today}")
     except Exception as e:
         print(f"[cache set] {e}")
 

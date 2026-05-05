@@ -1,16 +1,48 @@
 name: Daily Price Update
 
+# 統一走 Vercel /api/update-prices（資料源：kline-api/yfinance）
+# 捨棄舊的 Supabase Edge Function 路線，避免兩套系統並存
+#
+# 排程說明：
+#   UTC 00:00 = TWN 08:00（開盤前，台美股昨日收盤已取得）
+#   UTC 05:30 = TWN 13:30（台股收盤後，更新台股當日收盤價）
+
 on:
   schedule:
-    - cron: '0 0 * * *'  # 每天台灣時間早上8點（UTC 0:00）
-  workflow_dispatch:  # 也可以手動觸發
+    - cron: '0 0 * * 1-5'    # UTC 00:00 Mon-Fri = TWN 08:00（盤前更新）
+    - cron: '30 5 * * 1-5'   # UTC 05:30 Mon-Fri = TWN 13:30（台股收盤後更新）
+  workflow_dispatch:           # 允許手動觸發（測試用）
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Update prices and snapshot
+      - name: Update prices and daily snapshot
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
         run: |
-          curl -X POST '${{ secrets.SUPABASE_URL }}/functions/v1/daily-update' \
-            -H 'Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}' \
-            -H 'Content-Type: application/json'
+          echo "觸發 /api/update-prices（資料源：kline-api/yfinance）..."
+          STATUS=$(curl -s -o /tmp/update_response.json -w "%{http_code}" \
+            -X POST "https://${VERCEL_URL}/api/update-prices" \
+            -H "Content-Type: application/json" \
+            --max-time 90)
+
+          echo "HTTP Status: $STATUS"
+          echo "Response:"
+          cat /tmp/update_response.json | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(f'  成功: {d.get(\"successCount\", \"?\")} 筆')
+    print(f'  失敗: {d.get(\"failCount\", \"?\")} 筆')
+    print(f'  USD/TWD: {d.get(\"usdRate\", \"?\")}')
+except:
+    pass
+" 2>/dev/null || cat /tmp/update_response.json
+
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ 更新失敗 (HTTP $STATUS)"
+            exit 1
+          fi
+          echo "✅ 資產現價更新完成"
