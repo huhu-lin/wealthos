@@ -45,34 +45,69 @@ def get_cache(ticker: str, days: int):
     日期 key 使用台灣時區（UTC+8），與用戶瀏覽器日期一致，
     解決 daily-precache 在 UTC 22:00 寫入但用戶在台灣次日使用時 key 不吻合的問題。
 
-    台股收盤時間 TWN 13:30（UTC 05:30）。
-    若快取寫在台股收盤前且現在已過收盤，視為過期強制重抓。
+    Stale 判斷邏輯（按市場分類）：
+      台股：收盤 TWN 13:30 = UTC 05:30，加 buffer → UTC 06:00
+      美股：收盤 ET 16:00 = UTC 20:00（夏令），加 buffer → UTC 21:00
+
+    Bug 修復（2026-05-06）：
+      原本所有標的都用台股 UTC 06:00 判斷。
+      US 股在 UTC 15:31 寫入（美股開盤中），stale check 為 15:31 < 06:00 → False，
+      永遠不過期 → precache 跑了也拿到舊快取直接回傳，yfinance 不重抓。
+      修復：is_tw 分支用不同 close 時間。
+
+    額外防護：快取資料最新日期若超過 7 天，強制更新（防長假期陳舊資料）。
     """
     if not sb:
         return None
     try:
-        today = twn_today()   # ← 改用台灣時區日期
+        today = twn_today()
         res = sb.table(CACHE_TABLE).select("*") \
             .eq("ticker", ticker) \
             .eq("days", days) \
             .eq("cached_date", today) \
             .execute()
-        if res.data:
-            now_utc = datetime.utcnow()
-            # 台股收盤 UTC 05:30，yfinance 更新通常需再等 30 分鐘 → UTC 06:00
-            tw_close_utc = now_utc.replace(hour=6, minute=0, second=0, microsecond=0)
-            created_str = res.data[0].get("created_at", "")
-            try:
-                created_at = datetime.fromisoformat(created_str.replace("+00:00", ""))
-            except Exception:
-                created_at = now_utc  # 解析失敗當作新鮮的
+        if not res.data:
+            return None
 
-            # 快取寫在收盤前 + 現在已過收盤 → 強制過期（確保取到當日收盤資料）
-            if created_at < tw_close_utc and now_utc >= tw_close_utc:
-                print(f"[cache stale] {ticker} cached before TW close ({created_at.strftime('%H:%M')} UTC), refreshing")
-                return None
+        now_utc = datetime.utcnow()
+        entry = res.data[0]
+        created_str = entry.get("created_at", "")
+        try:
+            created_at = datetime.fromisoformat(created_str.replace("+00:00", ""))
+        except Exception:
+            created_at = now_utc  # 解析失敗當作新鮮的
 
-            return json.loads(res.data[0]["data"])
+        # 依市場決定收盤時間（UTC）
+        is_tw = ticker.endswith("_TW")
+        if is_tw:
+            # 台股 13:30 TWN = UTC 05:30，加 30min buffer → UTC 06:00
+            close_h, close_m = 6, 0
+        else:
+            # 美股 16:00 ET（夏令）= UTC 20:00，加 60min buffer → UTC 21:00
+            close_h, close_m = 21, 0
+
+        market_close_utc = now_utc.replace(hour=close_h, minute=close_m, second=0, microsecond=0)
+
+        if created_at < market_close_utc and now_utc >= market_close_utc:
+            mkt = "TW" if is_tw else "US"
+            print(f"[cache stale] {ticker} cached before {mkt} market close "
+                  f"({created_at.strftime('%H:%M')} UTC), refreshing")
+            return None
+
+        # 額外防護：資料最新日期 > 7 天則強制重抓（長假期 / 資料異常保護）
+        try:
+            cached_data = json.loads(entry["data"])
+            if cached_data:
+                last_date = datetime.strptime(cached_data[-1]["date"], "%Y-%m-%d")
+                age_days = (now_utc - last_date).days
+                if age_days > 7:
+                    print(f"[cache stale] {ticker} last data {cached_data[-1]['date']} "
+                          f"is {age_days}d old (>7), refreshing")
+                    return None
+            return cached_data
+        except Exception:
+            return json.loads(entry["data"])
+
     except Exception as e:
         print(f"[cache get] {e}")
     return None
