@@ -1227,18 +1227,21 @@ function BacktestTab() {
         </div>
         <div style={{fontSize:12, color:"#FFD700", fontWeight:600, marginBottom:10}}>⚡ P-007 雙重確認再平衡參數</div>
         <div style={{fontSize:11, color:C.textMuted, marginBottom:8, lineHeight:1.5}}>
-          訊號觸發 AND 持倉偏離 ≥ gate% 時才再平衡｜甜蜜點：gate=13%（Sharpe/Sortino/Calmar 三指標最優）
+          訊號觸發 AND 持倉偏離 ≥ gate% 時才再平衡｜最優 gate 因標的而異：
+          高波動（QLD / TQQQ）建議 <span style={{color:"#FFD700"}}>10–15%</span>，
+          低波動（SSO / DDM）建議 <span style={{color:"#FFD700"}}>20–30%</span>
         </div>
         <div className="wos-grid-2" style={{marginBottom:8}}>
           {p("gate_pct","Gate 偏離門檻（%）")}
         </div>
         <div style={{display:"flex", flexWrap:"wrap", gap:4, marginBottom:14}}>
           {[
-            {label:"5%（寬鬆）", pct:5},
+            {label:"5%", pct:5},
             {label:"10%", pct:10},
-            {label:"13%（最優）", pct:13},
-            {label:"17%（高報酬）", pct:17},
-            {label:"25%（嚴格）", pct:25},
+            {label:"13%", pct:13},
+            {label:"20%", pct:20},
+            {label:"25%", pct:25},
+            {label:"30%", pct:30},
           ].map(({label, pct}) => (
             <button
               key={label}
