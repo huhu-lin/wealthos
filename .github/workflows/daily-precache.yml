@@ -12,7 +12,7 @@ on:
 jobs:
   precache:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 50
 
     steps:
       - name: Cleanup old cache (keep last 3 days only)
@@ -40,7 +40,7 @@ jobs:
           echo "=== 台股 ETF 預載開始 ==="
           for t in "${TW_TICKERS[@]}"; do
             echo "→ 預載 $t ($DAYS 天)..."
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 \
               "$BASE/kline/tw?ticker=$t&days=$DAYS" || echo "timeout")
             echo "  $t → HTTP $STATUS"
             sleep 3
@@ -55,9 +55,11 @@ jobs:
           US_TICKERS=("SPY" "QQQ" "VOO" "VTI" "VT" "QLD" "TQQQ" "SSO" "UPRO")
 
           echo "=== 美股 ETF 預載開始 ==="
+          # 美股 9999 天資料量大（SPY/QQQ 各 ~640KB），yfinance 抓取需 60-120 秒
+          # max-time 200 = 3min 20s，足夠應付大型 ETF；job timeout-minutes=50 覆蓋整輪
           for t in "${US_TICKERS[@]}"; do
             echo "→ 預載 $t ($DAYS 天)..."
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 200 \
               "$BASE/kline/us?ticker=$t&days=$DAYS" || echo "timeout")
             echo "  $t → HTTP $STATUS"
             sleep 3
