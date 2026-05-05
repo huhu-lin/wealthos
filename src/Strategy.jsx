@@ -933,6 +933,14 @@ function BacktestTab() {
       grid: { vertLines:{ color:C.border }, horzLines:{ color:C.border } },
       rightPriceScale: { borderColor:C.border },
       timeScale: { borderColor:C.border },
+      localization: {
+        priceFormatter: (price) => {
+          if (price >= 10000000) return (price / 10000).toFixed(0) + '萬';
+          if (price >= 1000000)  return (price / 10000).toFixed(1) + '萬';
+          if (price >= 10000)    return (price / 10000).toFixed(2) + '萬';
+          return price.toFixed(0);
+        },
+      },
       width: chartRef.current.clientWidth,
       height: isMobile ? 240 : 350,
     });
@@ -1001,7 +1009,7 @@ function BacktestTab() {
         </div>
         <div style={{marginBottom:6}}>
           <span style={{color:C.accent, fontWeight:600}}>⚡ 預載標的（秒出）｜美股＋指數：</span>
-          <span style={{color:C.text}}>SPY、QQQ、IWM、VOO、VTI、QLD、TQQQ、SSO、UPRO、SOXL、TECL、FNGU、^TWII</span>
+          <span style={{color:C.text}}>SPY、QQQ、VOO、VTI、QLD、TQQQ、SSO、UPRO、VT</span>
         </div>
         <div style={{color:C.textMuted}}>
           ⏳ <strong style={{color:C.gold}}>非預載標的</strong> 首次查詢需等待 30～90 秒（系統即時抓取），之後當日再查即秒出。
@@ -1245,7 +1253,7 @@ function BacktestTab() {
                   </div>
                 )}
                 {stats && (
-                  <div style={{fontSize:10, color:C.textMuted, marginTop:6, lineHeight:"1.4"}}>
+                  <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", fontSize:10, color:C.textMuted, marginTop:6, gap:"2px 8px", textAlign:"left"}}>
                     <div>年化: {(stats.annReturn*100).toFixed(1)}%</div>
                     <div>夏普: {stats.sharpe.toFixed(2)}</div>
                     <div>波動: {(stats.annVol*100).toFixed(1)}%</div>
