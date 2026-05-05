@@ -710,7 +710,7 @@ function BacktestTab() {
   // target 內部以 0~1 儲存，UI 以 0~100% 顯示
   const [params, setParams] = useState({
     ticker:"00675L", is_us:false, benchmark:"006208", amount:1000000, target:0.5,
-    j_entry:10, j_exit:90, days:3650, period_days:90, drift_pct:25
+    j_entry:10, j_exit:90, days:3650, period_days:90, drift_pct:25, gate_pct:13
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -720,7 +720,7 @@ function BacktestTab() {
   const chartInstance = useRef(null);
   const seriesRefs = useRef({});
   const [visibleLines, setVisibleLines] = useState({
-    signal:true, period:true, drift:true, asym:true, annual:true, bm:true, dd:true,
+    signal:true, period:true, drift:true, asym:true, annual:true, p007:true, bm:true, dd:true,
   });
 
 
@@ -889,17 +889,31 @@ function BacktestTab() {
     // ── P-001 年度再平衡：每 252 個交易日（≈1年）固定再平衡 ──
     const { equity: annualEquity, markers: annualMarkers } = simRebalance(closes, alignedRaw, (i) => i % 252 === 0, withCost);
 
+    // ── P-007 雙重確認再平衡：KDJ訊號 AND 持倉偏離同時成立才觸發 ──
+    // BUY：超賣訊號 AND ETF比例 < (目標 - gate)
+    // SELL：過熱訊號 AND ETF比例 > (目標 + gate)
+    const sellSigs = new Set(signals.filter(s=>s.type==='SELL').map(s=>s.index));
+    const { equity: p007Equity, markers: p007Markers } = simRebalance(closes, alignedRaw, (i, total, shares, price) => {
+      const actualPct = (shares * price) / total * 100;
+      const targetPct = params.target * 100;
+      if (buySigs.has(i) && actualPct < targetPct - params.gate_pct) return true;
+      if (sellSigs.has(i) && actualPct > targetPct + params.gate_pct) return true;
+      return false;
+    }, withCost);
+
     const signalReturn = (signalEquity[signalEquity.length-1].value - params.amount) / params.amount * 100;
     const periodReturn = (periodEquity[periodEquity.length-1].value - params.amount) / params.amount * 100;
     const driftReturn  = (driftEquity[driftEquity.length-1].value - params.amount) / params.amount * 100;
     const asymReturn   = (asymEquity[asymEquity.length-1].value - params.amount) / params.amount * 100;
     const annualReturn = (annualEquity[annualEquity.length-1].value - params.amount) / params.amount * 100;
+    const p007Return   = (p007Equity[p007Equity.length-1].value - params.amount) / params.amount * 100;
     const bmReturn = alignedBmRaw.length ? (alignedBmRaw[alignedBmRaw.length-1].close - alignedBmRaw[0].close) / alignedBmRaw[0].close * 100 : null;
     const signalMaxDD = calcMaxDrawdown(signalEquity.map(e=>e.value));
     const periodMaxDD = calcMaxDrawdown(periodEquity.map(e=>e.value));
     const driftMaxDD  = calcMaxDrawdown(driftEquity.map(e=>e.value));
     const asymMaxDD   = calcMaxDrawdown(asymEquity.map(e=>e.value));
     const annualMaxDD = calcMaxDrawdown(annualEquity.map(e=>e.value));
+    const p007MaxDD   = calcMaxDrawdown(p007Equity.map(e=>e.value));
     const maxDD = signalMaxDD; // backward compat
 
     // 建立 benchmark 每日資產值（初始金額相同，按收盤價縮放），用於勝率比較
@@ -927,8 +941,10 @@ function BacktestTab() {
     const asymStats = calcAnnualizedStats(asymVals, tradingDays, alignBmToEquity(asymEquity));
     const annualVals = annualEquity.map(e=>e.value);
     const annualStats = calcAnnualizedStats(annualVals, tradingDays, alignBmToEquity(annualEquity));
+    const p007Vals = p007Equity.map(e=>e.value);
+    const p007Stats = calcAnnualizedStats(p007Vals, tradingDays, alignBmToEquity(p007Equity));
 
-    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, signalMaxDD, periodMaxDD, driftMaxDD, asymMaxDD, annualMaxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, withCost });
+    setResult({ signalEquity, periodEquity, driftEquity, asymEquity, annualEquity, p007Equity, signalMarkers, periodMarkers, driftMarkers, asymMarkers, annualMarkers, p007Markers, signalReturn, periodReturn, driftReturn, asymReturn, annualReturn, p007Return, bmReturn, signals, raw: alignedRaw, bmRaw: alignedBmRaw, maxDD, signalMaxDD, periodMaxDD, driftMaxDD, asymMaxDD, annualMaxDD, p007MaxDD, actualStart, actualEnd, tradingDays, requestedDays, isDataShort, signalStats, periodStats, driftStats, asymStats, annualStats, p007Stats, withCost, gate_pct: params.gate_pct });
     setLoadingMsg("");
     setLoading(false);
   }
@@ -964,22 +980,25 @@ function BacktestTab() {
     chartInstance.current = chart;
 
     // ── 資產曲線（右 Y 軸）──────────────────────────────────
-    const s1 = chart.addLineSeries({ color:C.accent,  lineWidth:2, title:"訊號再平衡" });
-    const s2 = chart.addLineSeries({ color:C.orange,  lineWidth:2, lineStyle:0, title:`週期(${params.period_days}天)` });
-    const s3 = chart.addLineSeries({ color:"#9B6DFF", lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
-    const s4 = chart.addLineSeries({ color:C.red,     lineWidth:2, lineStyle:0, title:"KDJ買+偏移賣" });
-    const s5 = chart.addLineSeries({ color:"#00D9C0", lineWidth:1, lineStyle:2, title:"年度再平衡" });
+    const s1 = chart.addLineSeries({ color:C.accent,    lineWidth:2, title:"訊號再平衡" });
+    const s2 = chart.addLineSeries({ color:C.orange,    lineWidth:2, lineStyle:0, title:`週期(${params.period_days}天)` });
+    const s3 = chart.addLineSeries({ color:"#9B6DFF",   lineWidth:2, lineStyle:0, title:`比例偏移(${params.drift_pct}%)` });
+    const s4 = chart.addLineSeries({ color:C.red,       lineWidth:2, lineStyle:0, title:"KDJ買+偏移賣" });
+    const s5 = chart.addLineSeries({ color:"#00D9C0",   lineWidth:1, lineStyle:2, title:"年度再平衡" });
+    const s6 = chart.addLineSeries({ color:"#FFD700",   lineWidth:2, lineStyle:0, title:`P-007雙重確認(gate=${result.gate_pct}%)` });
     s1.setData(result.signalEquity.map(e=>({ time:e.date, value:e.value })));
     s2.setData(result.periodEquity.map(e=>({ time:e.date, value:e.value })));
     s3.setData(result.driftEquity.map(e=>({ time:e.date, value:e.value })));
     s4.setData(result.asymEquity.map(e=>({ time:e.date, value:e.value })));
     s5.setData(result.annualEquity.map(e=>({ time:e.date, value:e.value })));
+    s6.setData(result.p007Equity.map(e=>({ time:e.date, value:e.value })));
 
     s1.setMarkers(result.signalMarkers.map(date=>({ time:date, position:'aboveBar', color:C.accent, shape:'circle', text:'' })));
     s2.setMarkers(result.periodMarkers.map(date=>({ time:date, position:'aboveBar', color:C.orange, shape:'circle', text:'' })));
     s3.setMarkers(result.driftMarkers.map(date=>({ time:date, position:'belowBar', color:'#9B6DFF', shape:'circle', text:'' })));
     s4.setMarkers(result.asymMarkers.map(date=>({ time:date, position:'belowBar', color:C.red, shape:'arrowUp', text:'' })));
     s5.setMarkers(result.annualMarkers.map(date=>({ time:date, position:'aboveBar', color:"#00D9C0", shape:'circle', text:'' })));
+    s6.setMarkers(result.p007Markers.map(date=>({ time:date, position:'aboveBar', color:"#FFD700", shape:'arrowUp', text:'' })));
 
     // ── Benchmark ──────────────────────────────────────────
     let bmLine = null;
@@ -1008,7 +1027,7 @@ function BacktestTab() {
     ddSeries.setData(ddData);
 
     // 儲存 series ref，供 toggle useEffect 使用
-    seriesRefs.current = { s1, s2, s3, s4, s5, bm: bmLine, dd: ddSeries };
+    seriesRefs.current = { s1, s2, s3, s4, s5, s6, bm: bmLine, dd: ddSeries };
 
     // 套用當前 visibleLines 狀態（避免重建後 toggle 狀態遺失）
     const vl = visibleLines;
@@ -1017,6 +1036,7 @@ function BacktestTab() {
     s3.applyOptions({ visible: vl.drift });
     s4.applyOptions({ visible: vl.asym });
     s5.applyOptions({ visible: vl.annual });
+    s6.applyOptions({ visible: vl.p007 });
     if (bmLine) bmLine.applyOptions({ visible: vl.bm });
     ddSeries.applyOptions({ visible: vl.dd });
 
@@ -1036,6 +1056,7 @@ function BacktestTab() {
     r.s3.applyOptions({ visible: visibleLines.drift });
     r.s4.applyOptions({ visible: visibleLines.asym });
     r.s5.applyOptions({ visible: visibleLines.annual });
+    if (r.s6) r.s6.applyOptions({ visible: visibleLines.p007 });
     if (r.bm) r.bm.applyOptions({ visible: visibleLines.bm });
     if (r.dd) r.dd.applyOptions({ visible: visibleLines.dd });
   }, [visibleLines]);
@@ -1058,7 +1079,7 @@ function BacktestTab() {
   return (
     <div>
       <div style={{fontWeight:700, fontSize:15, color:C.text, marginBottom:4}}>策略回測</div>
-      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>五種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span></div>
+      <div style={{color:C.textMuted, fontSize:12, marginBottom:16}}>六種再平衡策略比較｜訊號 / 週期 / 偏移 / <span style={{color:C.red, fontWeight:600}}>KDJ買+偏移賣</span> / <span style={{color:"#00D9C0", fontWeight:600}}>年度(P-001)</span> / <span style={{color:"#FFD700", fontWeight:600}}>雙重確認(P-007)</span>｜<span style={{color:C.blue}}>還原股價（含息調整）</span></div>
 
       <Card style={{padding:12, marginBottom:16, background:C.surface, fontSize:11, color:C.textMuted, lineHeight:"1.5"}}>
         <strong style={{color:C.text}}>📌 指標說明：</strong> 年化報酬率 = 策略報酬 ^(252/交易日數) - 1｜夏普比率 = (年化報酬 - 2%無風險率) / 年化波動率｜波動率 = 年化標準差｜勝率 = 策略資產 {'>'} 原型ETF買進持有的天數%。KDJ 計算採 OHLCV 實際最高/最低價（業界標準）。<strong style={{color:C.gold}}>注意：</strong> 還原股價已含息再投資，回測不含滑點；P-003 交易成本：買入 0.1425%、賣出 0.4425%（含證交稅），僅對交易金額計算。
@@ -1204,6 +1225,34 @@ function BacktestTab() {
             >{label}</button>
           ))}
         </div>
+        <div style={{fontSize:12, color:"#FFD700", fontWeight:600, marginBottom:10}}>⚡ P-007 雙重確認再平衡參數</div>
+        <div style={{fontSize:11, color:C.textMuted, marginBottom:8, lineHeight:1.5}}>
+          訊號觸發 AND 持倉偏離 ≥ gate% 時才再平衡｜甜蜜點：gate=13%（Sharpe/Sortino/Calmar 三指標最優）
+        </div>
+        <div className="wos-grid-2" style={{marginBottom:8}}>
+          {p("gate_pct","Gate 偏離門檻（%）")}
+        </div>
+        <div style={{display:"flex", flexWrap:"wrap", gap:4, marginBottom:14}}>
+          {[
+            {label:"5%（寬鬆）", pct:5},
+            {label:"10%", pct:10},
+            {label:"13%（最優）", pct:13},
+            {label:"17%（高報酬）", pct:17},
+            {label:"25%（嚴格）", pct:25},
+          ].map(({label, pct}) => (
+            <button
+              key={label}
+              onClick={() => setParams(v=>({...v, gate_pct:pct}))}
+              style={{
+                background: params.gate_pct===pct ? "#FFD70030" : C.surface,
+                color: params.gate_pct===pct ? "#FFD700" : C.textMuted,
+                border: `1px solid ${params.gate_pct===pct ? "#FFD70060" : C.border}`,
+                borderRadius:5, padding:"2px 8px", fontSize:10,
+                fontWeight:600, cursor:"pointer",
+              }}
+            >{label}</button>
+          ))}
+        </div>
         <div className="wos-run-row" style={{display:"flex", alignItems:"center", gap:12, flexWrap:"wrap"}}>
           <Btn onClick={runBacktest} color={loading?C.textMuted:C.accent}>{loading?"計算中...":"▶ 執行回測"}</Btn>
           <label style={{display:"flex", alignItems:"center", gap:6, cursor:"pointer"}}>
@@ -1300,6 +1349,15 @@ function BacktestTab() {
                 maxDD: result.annualMaxDD,
               },
               {
+                label:`⚡ 雙重確認 P-007 (gate=${result.gate_pct}%)`,
+                pct:`${result.p007Return>=0?"+":""}${result.p007Return.toFixed(1)}%`,
+                amt: result.p007Return/100*params.amount,
+                color:"#FFD700",
+                sub:`${result.p007Markers.length} 次｜訊號+偏離同時達標`,
+                stats: result.p007Stats,
+                maxDD: result.p007MaxDD,
+              },
+              {
                 label:`📈 ${params.benchmark||"原型ETF"} 買進持有`,
                 pct: result.bmReturn!=null?`${result.bmReturn>=0?"+":""}${result.bmReturn.toFixed(1)}%`:"-",
                 amt: result.bmReturn!=null ? result.bmReturn/100*params.amount : null,
@@ -1340,6 +1398,7 @@ function BacktestTab() {
                 { key:"drift",  label:"比例偏移",      color:"#9B6DFF" },
                 { key:"asym",   label:"KDJ+偏移賣",    color:C.red     },
                 { key:"annual", label:"年度再平衡",    color:"#00D9C0" },
+                { key:"p007",   label:`P-007 雙重確認`, color:"#FFD700" },
                 { key:"bm",     label:params.benchmark||"原型ETF", color:C.blue },
                 { key:"dd",     label:"回撤曲線",      color:C.red+"99"},
               ].map(({ key, label, color }) => {
