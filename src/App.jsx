@@ -39,7 +39,21 @@ const TABS = [
   { id: "strategy", label: "策略", icon: "📈" },
 ];
 
+// ── RWD Hook（本地定義，避免跨模組依賴）────────────────────
+function useWindowWidth() {
+  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1280);
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return width;
+}
+
 export default function App() {
+  const winWidth  = useWindowWidth();
+  const isMobile  = winWidth <= 600;
+
   // ── Auth 狀態 ─────────────────────────────────────────────
   const [session,     setSession]     = useState(undefined); // undefined = 初始化中, null = 未登入
   const [authChecked, setAuthChecked] = useState(false);
@@ -274,16 +288,20 @@ export default function App() {
 
           {/* 右側：淨值 + 匯率 + 登出 */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexShrink: 0 }}>
-            <div style={{ textAlign: "right", display: "none", "@media (min-width: 768px)": { display: "block" } }}>
-              <div style={{ color: C.textMuted, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>NET WORTH</div>
-              <div style={{ color: C.accent, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 16, letterSpacing: "-0.02em" }}>
-                NT${fmt(netWorth)}
+            {/* NET WORTH：桌機顯示，手機隱藏（600px 以下） */}
+            {!isMobile && (
+              <div style={{ textAlign: "right" }}>
+                <div style={{ color: C.textMuted, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>NET WORTH</div>
+                <div style={{ color: C.accent, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 16, letterSpacing: "-0.02em" }}>
+                  NT${fmt(netWorth)}
+                </div>
               </div>
-            </div>
+            )}
             <div style={{
-              padding: "5px 10px",
+              padding: isMobile ? "4px 8px" : "5px 10px",
               background: C.accentDim, border: `1px solid ${C.accent}35`,
-              borderRadius: 20, color: C.textMuted, fontSize: 10, fontFamily: "monospace", whiteSpace: "nowrap",
+              borderRadius: 20, color: C.textMuted, fontSize: isMobile ? 9 : 10,
+              fontFamily: "monospace", whiteSpace: "nowrap",
             }}>
               USD {usdRate.toFixed(2)}
             </div>

@@ -108,60 +108,35 @@ export default function USAccount({ assets, usdRate, reload }) {
 
   // ── 一鍵更新美股股價（含錯誤處理）───────────────────────
   // 新增：進度顯示 + 延遲防止過快請求
+  // ── 一鍵更新股價（透過 /api/update-prices，資料源：kline-api/yfinance）
   const refreshPrices = async () => {
     try {
       setFetching(true);
-      setFetchMsg("抓取股價中…");
+      setFetchMsg("抓取股價中…（yfinance）");
       setError(null);
-      const etfsToUpdate = assets.filter(a => a.ticker && a.type === "etf");
-      if (etfsToUpdate.length === 0) {
-        setFetchMsg("ℹ️ 無需更新的 ETF");
-        if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
-        fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 2000);
-        setFetching(false);
-        return;
+
+      const res  = await fetch("/api/update-prices", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+
+      const usResults = (json.results || []).filter(r => r.account === "us");
+      const okCount   = usResults.filter(r => r.ok).length;
+      const failCount = usResults.filter(r => !r.ok).length;
+
+      if (okCount === 0 && failCount === 0) {
+        setFetchMsg("ℹ️ 無美股資產可更新");
+      } else if (failCount > 0 && okCount === 0) {
+        setFetchMsg(`❌ 無法取得股價（${failCount} 筆失敗），請稍後再試`);
+      } else {
+        setFetchMsg(`✅ 已更新 ${okCount} 筆${failCount > 0 ? `，${failCount} 筆失敗` : ""}`);
       }
 
-      let successCount = 0;
-      let failCount = 0;
-
-      // 順序執行，每次延遲 50ms（FinMind 的限制較寬鬆）
-      for (let i = 0; i < etfsToUpdate.length; i++) {
-        const a = etfsToUpdate[i];
-        setFetchMsg(`更新中... ${i + 1}/${etfsToUpdate.length} (${a.ticker})`);
-
-        const price = await fetchUSPrice(a.ticker);
-        if (price) {
-          const value_usd = price * (a.shares || 0);
-          const result = await supabase.from("assets").update({
-            price_usd: price, value_usd, value_twd: value_usd * usdRate,
-          }).eq("id", a.id);
-          if (result.error) throw new Error(result.error.message);
-          setFetchMsg(`✅ ${a.ticker}: $${price.toFixed(2)}`);
-          successCount++;
-        } else {
-          setFetchMsg(`❌ ${a.ticker}: 無法取得股價`);
-          failCount++;
-        }
-
-        // 每個請求之間延遲 50ms
-        if (i < etfsToUpdate.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-      }
-
-      const summary = failCount > 0
-        ? `✅ 成功 ${successCount}/${etfsToUpdate.length}，失敗 ${failCount}`
-        : `✅ 全部更新完成 (${successCount} 筆)`;
-      setFetchMsg(summary);
       if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
-      fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 3000);
+      fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 4000);
       reload();
     } catch (err) {
-      setFetching(false);
-      setFetchMsg("❌ 更新失敗");
+      setFetchMsg("❌ 更新失敗：" + err.message);
       setError(err.message);
-      alert(`⚠️ 股價更新失敗: ${err.message}`);
     } finally {
       setFetching(false);
     }

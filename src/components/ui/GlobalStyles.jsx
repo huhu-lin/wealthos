@@ -101,6 +101,139 @@ export default function GlobalStyles() {
 
       /* ── 配置進度條動畫 ───────────────────────────────── */
       .wos-bar-fill { transition: width 1s cubic-bezier(.4,0,.2,1); }
+
+      /* ══════════════════════════════════════════════════════
+         RWD 響應式格線系統
+         Breakpoints:
+           Mobile  : ≤ 480px  (手機直向)
+           Tablet  : ≤ 768px  (手機橫向 / 小平板)
+           Desktop : > 768px  (桌機 / 大平板)
+         ══════════════════════════════════════════════════════ */
+
+      /* ── 2 欄 → 手機 1 欄 ─────────────────────────────── */
+      .wos-grid-2 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      @media (max-width: 480px) {
+        .wos-grid-2 { grid-template-columns: 1fr; }
+      }
+
+      /* ── 3 欄 → 平板 2 欄 → 手機 1 欄 ─────────────────── */
+      .wos-grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
+      @media (max-width: 768px) {
+        .wos-grid-3 { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (max-width: 480px) {
+        .wos-grid-3 { grid-template-columns: 1fr; }
+      }
+
+      /* ── 6 欄 → 手機 3 欄（MarketBrief 總經指標）──────── */
+      .wos-grid-6-3 {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 6px;
+      }
+      @media (max-width: 600px) {
+        .wos-grid-6-3 { grid-template-columns: repeat(3, 1fr); }
+      }
+
+      /* ── 3 欄訊號卡 → 手機 1 欄（PreMarketSummary）─────── */
+      .wos-grid-signal {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        font-size: 11px;
+      }
+      @media (max-width: 600px) {
+        .wos-grid-signal { grid-template-columns: 1fr; }
+      }
+
+      /* ── 監控表單：3 欄 → 2 欄 → 1 欄 ─────────────────── */
+      .wos-grid-form {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      @media (max-width: 640px) {
+        .wos-grid-form { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (max-width: 400px) {
+        .wos-grid-form { grid-template-columns: 1fr; }
+      }
+
+      /* ── 回測說明文字：手機縮小字 ──────────────────────── */
+      @media (max-width: 480px) {
+        .wos-desc-card { font-size: 10px !important; line-height: 1.6 !important; }
+      }
+
+      /* ── 手機隱藏 ───────────────────────────────────────── */
+      @media (max-width: 600px) {
+        .wos-hide-mobile { display: none !important; }
+      }
+
+      /* ── 手機顯示（桌機隱藏）────────────────────────────── */
+      .wos-show-mobile { display: none !important; }
+      @media (max-width: 600px) {
+        .wos-show-mobile { display: block !important; }
+      }
+
+      /* ── Tab 按鈕手機尺寸縮小 ───────────────────────────── */
+      @media (max-width: 480px) {
+        .wos-tab-btn {
+          padding: 6px 10px !important;
+          font-size: 11px !important;
+          white-space: nowrap;
+        }
+      }
+
+      /* ── 績效結果卡片：2欄 → 手機1欄 ───────────────────── */
+      .wos-result-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      @media (max-width: 500px) {
+        .wos-result-grid { grid-template-columns: 1fr; }
+      }
+
+      /* ── KChart 標題列：手機換行 ─────────────────────────── */
+      @media (max-width: 480px) {
+        .wos-kchart-header {
+          flex-direction: column !important;
+          align-items: flex-start !important;
+          gap: 6px !important;
+        }
+        .wos-kchart-badges {
+          flex-wrap: wrap !important;
+          gap: 4px !important;
+        }
+      }
+
+      /* ── 監控標題列：手機換行 ───────────────────────────── */
+      @media (max-width: 480px) {
+        .wos-monitor-header {
+          flex-direction: column !important;
+          align-items: flex-start !important;
+          gap: 8px !important;
+        }
+      }
+
+      /* ── 回測底部按鈕區：手機換行 ───────────────────────── */
+      @media (max-width: 480px) {
+        .wos-run-row {
+          flex-direction: column !important;
+          align-items: flex-start !important;
+          gap: 8px !important;
+        }
+      }
     `}</style>
   );
 }
