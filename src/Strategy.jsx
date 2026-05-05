@@ -1,4 +1,15 @@
 import { useState, useEffect, useRef } from "react";
+
+// ─── RWD Hook：監聽視窗寬度，回傳數字供各元件判斷 breakpoint ──
+function useWindowWidth() {
+  const [width, setWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return width;
+}
 import { createChart } from "lightweight-charts";
 import { supabase } from "./supabase";
 
@@ -219,13 +230,14 @@ function calcKDJ(closes, highs, lows, period=9) {
   });
 }
 
-function checkSignals(closes, bb, kdj, jEntry=10, jExit=90) {
+function checkSignals(closes, bb, kdj, jEntry=10, jExit=90, strategyMode='signal') {
   const signals = [];
   let jBelowFlag = false, jAboveFlag = false;
   for (let i = 1; i < closes.length; i++) {
     if (!bb[i] || !kdj[i] || !bb[i-1] || !kdj[i-1]) continue;
     if (closes[i-1] < bb[i-1].lower && kdj[i-1].j < jEntry) jBelowFlag = true;
-    if (closes[i-1] > bb[i-1].upper && kdj[i-1].j > jExit) jAboveFlag = true;
+    // P002 非對稱：賣出靠偏移閾值，不靠 KDJ，跳過 jAboveFlag
+    if (strategyMode !== 'asymmetric' && closes[i-1] > bb[i-1].upper && kdj[i-1].j > jExit) jAboveFlag = true;
     if (jBelowFlag && kdj[i].j > jEntry) { signals.push({ index:i, type:'BUY' }); jBelowFlag = false; }
     if (jAboveFlag && kdj[i].j < jExit) { signals.push({ index:i, type:'SELL' }); jAboveFlag = false; }
   }
@@ -238,6 +250,10 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
   const kdjInstance = useRef(null);
+  const winWidth = useWindowWidth();
+  const isMobile = winWidth <= 480;
+  const chartH = isMobile ? 220 : 320;
+  const kdjH   = isMobile ? 120 : 160;
 
   useEffect(() => {
     if (!data.length || !chartRef.current || !kdjRef.current) return;
@@ -249,7 +265,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
     const lows   = data.map(d => d.low);
     const bb = calcBB(closes);
     const kdj = calcKDJ(closes, highs, lows);
-    const signals = checkSignals(closes, bb, kdj, jEntry, jExit);
+    const signals = checkSignals(closes, bb, kdj, jEntry, jExit, strategyMode);
 
     const chartOpts = {
       layout: { background: { color: C.surface2 }, textColor: C.textMuted },
@@ -258,7 +274,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       rightPriceScale: { borderColor: C.border },
       timeScale: { borderColor: C.border, timeVisible: true },
       width: chartRef.current.clientWidth,
-      height: 320,
+      height: chartH,
     };
 
     const chart = createChart(chartRef.current, chartOpts);
@@ -286,7 +302,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       text: s.type==='BUY' ? '再平衡↑' : '再平衡↓',
     })));
 
-    const kdjChart = createChart(kdjRef.current, { ...chartOpts, height:160, timeScale:{ visible:false } });
+    const kdjChart = createChart(kdjRef.current, { ...chartOpts, height:kdjH, timeScale:{ visible:false } });
     kdjInstance.current = kdjChart;
 
     const kS = kdjChart.addLineSeries({ color:C.blue,   lineWidth:1, title:'K' });
@@ -310,7 +326,8 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       if (chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; }
       if (kdjInstance.current) { kdjInstance.current.remove(); kdjInstance.current = null; }
     };
-  }, [data, jEntry, jExit]);
+  // winWidth 變化時重建圖表以套用新高度
+  }, [data, jEntry, jExit, chartH, kdjH]);
 
   const closes = data.map(d => d.close);
   const highs  = data.map(d => d.high);
@@ -340,16 +357,16 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
   const diffAmt = Math.round(total * target - holdingValue);
 
   return (
-    <Card style={{padding:16, marginBottom:14}}>
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-        <div style={{display:"flex", gap:8, alignItems:"center"}}>
-          <span style={{fontWeight:700, fontSize:16}}>{ticker}</span>
+    <Card style={{padding:isMobile?12:16, marginBottom:14}}>
+      <div className="wos-kchart-header" style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+        <div className="wos-kchart-badges" style={{display:"flex", gap:8, alignItems:"center", flexWrap:"wrap"}}>
+          <span style={{fontWeight:700, fontSize:isMobile?14:16}}>{ticker}</span>
           {lastClose>0 && <span style={{color:C.textMuted, fontSize:13}}>{isUS?'$':'NT$'}{lastClose?.toFixed(2)}</span>}
           <Badge text={status} color={statusColor}/>
           <Badge text="還原股價" color={C.blue}/>
           {strategyMode === 'asymmetric' && <Badge text="⚡ P-002 非對稱" color={C.orange}/>}
         </div>
-        {lastKDJ && <span style={{color:C.textMuted, fontSize:12}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
+        {lastKDJ && <span style={{color:C.textMuted, fontSize:12, whiteSpace:"nowrap"}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
       {total > 0 && (() => {
         const driftNow = Math.abs(actualPct - targetPct);
@@ -486,8 +503,8 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
               {r.changePct > 0 ? '+' : ''}{r.changePct.toFixed(2)}%
             </span>
           </div>
-          {/* 三欄資訊 */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, fontSize:11 }}>
+          {/* 三欄資訊（桌機3欄 / 手機1欄，.wos-grid-signal 控制）*/}
+          <div className="wos-grid-signal">
             {/* 昨日表現 */}
             <div style={{ background:C.bg, borderRadius:6, padding:'8px 10px' }}>
               <div style={{ color:C.textMuted, marginBottom:4, fontWeight:600 }}>昨日表現</div>
@@ -588,7 +605,7 @@ function MonitorTab({ allAssets }) {
 
   return (
     <div>
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
+      <div className="wos-monitor-header" style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
         <div>
           <div style={{fontWeight:700, fontSize:15, color:C.text}}>再平衡訊號監控</div>
           <div style={{color:C.textMuted, fontSize:12, marginTop:2}}>布林通道 (20,2) + KDJ (9,3,3)｜還原股價｜箭頭標記為訊號觸發點</div>
@@ -601,7 +618,7 @@ function MonitorTab({ allAssets }) {
       {showAdd && (
         <Card style={{padding:16, marginBottom:16}}>
           <div style={{fontWeight:600, fontSize:13, marginBottom:12, color:C.accent}}>{editId?"編輯股票":"新增監控股票"}</div>
-          <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:12}}>
+          <div className="wos-grid-form">
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>股票代號</div>
               <Input value={form.ticker} onChange={e=>setForm({...form, ticker:e.target.value.toUpperCase()})} placeholder="如 00675L / QLD" style={{width:"100%"}}/>
@@ -688,6 +705,8 @@ function MonitorTab({ allAssets }) {
 
 // ─── 回測 Tab ────────────────────────────────────────────────
 function BacktestTab() {
+  const winWidth = useWindowWidth();
+  const isMobile = winWidth <= 480;
   // target 內部以 0~1 儲存，UI 以 0~100% 顯示
   const [params, setParams] = useState({
     ticker:"00675L", is_us:false, benchmark:"006208", amount:1000000, target:0.5,
@@ -915,7 +934,7 @@ function BacktestTab() {
       rightPriceScale: { borderColor:C.border },
       timeScale: { borderColor:C.border },
       width: chartRef.current.clientWidth,
-      height: 350,
+      height: isMobile ? 240 : 350,
     });
     chartInstance.current = chart;
 
@@ -943,7 +962,8 @@ function BacktestTab() {
     }
     chart.timeScale().fitContent();
     return () => { if(chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; } };
-  }, [result]);
+  // isMobile 變化時重建圖表以套用新高度
+  }, [result, isMobile]);
 
   const p = (key, label, type="number", extra={}) => (
     <div>
@@ -996,7 +1016,7 @@ function BacktestTab() {
 
       <Card style={{padding:16, marginBottom:16}}>
         <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>基本設定</div>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:14}}>
+        <div className="wos-grid-3" style={{marginBottom:14}}>
           {p("ticker","槓桿ETF代號","text",{placeholder:"如 QLD / 00675L"})}
           {p("is_us","市場","select")}
           {p("benchmark","對比原型ETF","text",{placeholder:"如 QQQ / 0050"})}
@@ -1058,12 +1078,12 @@ function BacktestTab() {
           </div>
         </div>
         <div style={{fontSize:12, color:C.accent, fontWeight:600, marginBottom:10}}>訊號再平衡參數</div>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:14}}>
+        <div className="wos-grid-2" style={{marginBottom:14}}>
           {p("j_entry","J值進場閾值")}
           {p("j_exit","J值出場閾值")}
         </div>
         <div style={{fontSize:12, color:C.orange, fontWeight:600, marginBottom:10}}>週期再平衡參數</div>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:8}}>
+        <div className="wos-grid-2" style={{marginBottom:8}}>
           {p("period_days","再平衡週期（天）")}
         </div>
         <div style={{display:"flex", flexWrap:"wrap", gap:4, marginBottom:14}}>
@@ -1086,7 +1106,7 @@ function BacktestTab() {
           ))}
         </div>
         <div style={{fontSize:12, color:"#9B6DFF", fontWeight:600, marginBottom:10}}>比例偏移再平衡參數</div>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:8}}>
+        <div className="wos-grid-2" style={{marginBottom:8}}>
           {p("drift_pct","偏離觸發閾值（%）")}
         </div>
         <div style={{display:"flex", flexWrap:"wrap", gap:4, marginBottom:14}}>
@@ -1109,7 +1129,7 @@ function BacktestTab() {
             >{label}</button>
           ))}
         </div>
-        <div style={{display:"flex", alignItems:"center", gap:12, flexWrap:"wrap"}}>
+        <div className="wos-run-row" style={{display:"flex", alignItems:"center", gap:12, flexWrap:"wrap"}}>
           <Btn onClick={runBacktest} color={loading?C.textMuted:C.accent}>{loading?"計算中...":"▶ 執行回測"}</Btn>
           <label style={{display:"flex", alignItems:"center", gap:6, cursor:"pointer"}}>
             <input
@@ -1157,7 +1177,7 @@ function BacktestTab() {
               📉 <strong>P-003 交易成本模式</strong>：買入再平衡扣 0.1425%（手續費），賣出再平衡扣 0.4425%（手續費 + 證交稅 0.3%），僅對實際交易金額計算。
             </div>
           )}
-          <div style={{display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10, marginBottom:16}}>
+          <div className="wos-result-grid">
             {[
               {
                 label:"📡 訊號再平衡",
