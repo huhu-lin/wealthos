@@ -109,40 +109,35 @@ export default function TWAccount({ assets, reload }) {
     }
   };
 
-  // ── 一鍵更新股價（含錯誤處理）────────────────────────────
-  // 只更新 type=etf 且有 ticker 的資產
+  // ── 一鍵更新股價（透過 /api/update-prices，資料源：kline-api/yfinance）
   const refreshPrices = async () => {
     try {
       setFetching(true);
-      setFetchMsg("抓取股價中…");
+      setFetchMsg("抓取股價中…（yfinance）");
       setError(null);
-      const etfsToUpdate = assets.filter(a => a.ticker && a.type === "etf");
-      if (etfsToUpdate.length === 0) {
-        setFetchMsg("ℹ️ 無需更新的 ETF");
-        if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
-        fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 2000);
-        setFetching(false);
-        return;
+
+      const res  = await fetch("/api/update-prices", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+
+      const twResults = (json.results || []).filter(r => r.account === "tw");
+      const okCount   = twResults.filter(r => r.ok).length;
+      const failCount = twResults.filter(r => !r.ok).length;
+
+      if (okCount === 0 && failCount === 0) {
+        setFetchMsg("ℹ️ 無台股資產可更新");
+      } else if (failCount > 0 && okCount === 0) {
+        setFetchMsg(`❌ 無法取得股價（${failCount} 筆失敗），請稍後再試`);
+      } else {
+        setFetchMsg(`✅ 已更新 ${okCount} 筆${failCount > 0 ? `，${failCount} 筆失敗` : ""}`);
       }
-      for (const a of etfsToUpdate) {
-        const price = await fetchTWPrice(a.ticker);
-        if (price) {
-          const result = await supabase.from("assets").update({ price, value_twd: price * (a.shares || 0) }).eq("id", a.id);
-          if (result.error) throw new Error(result.error.message);
-          setFetchMsg(`✅ ${a.ticker}: NT$${price}`);
-        } else {
-          setFetchMsg(`❌ ${a.ticker}: 無法取得股價`);
-        }
-      }
-      setFetchMsg("✅ 更新完成");
+
       if (fetchMsgTimer.current) clearTimeout(fetchMsgTimer.current);
-      fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 3000);
+      fetchMsgTimer.current = setTimeout(() => setFetchMsg(""), 4000);
       reload();
     } catch (err) {
-      setFetching(false);
-      setFetchMsg("❌ 更新失敗");
+      setFetchMsg("❌ 更新失敗：" + err.message);
       setError(err.message);
-      alert(`⚠️ 股價更新失敗: ${err.message}`);
     } finally {
       setFetching(false);
     }

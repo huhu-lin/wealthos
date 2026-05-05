@@ -10,7 +10,7 @@ export default function TabBtn({ label, icon, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="wos-tab"
+      className="wos-tab wos-tab-btn"
       style={{
         // active 時：綠藍漸層背景；inactive 時：透明
         background: active

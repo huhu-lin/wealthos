@@ -8,7 +8,18 @@
 //   5. 配置圓餅圖
 // ============================================================
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+
+// ── RWD Hook（本地定義）─────────────────────────────────────
+function useWindowWidth() {
+  const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1280);
+  useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return w;
+}
 import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -21,6 +32,8 @@ import KPI         from "./ui/KPI";
 import MarketBrief from "./MarketBrief";
 
 export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, snapshots, usdRate }) {
+  const winWidth = useWindowWidth();
+  const isMobile = winWidth <= 480;
 
   // ── 資產 / 負債計算（useMemo 避免每次 render 重新計算）────────────────────
   const {
@@ -119,7 +132,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
         background: `linear-gradient(135deg, ${C.surface} 0%, #0d1a2d 100%)`,
         border: `1px solid ${C.borderHover}`,
         borderRadius: 16,
-        padding: "22px 24px",
+        padding: isMobile ? "16px 16px" : "22px 24px",
         position: "relative",
         overflow: "hidden",
         boxShadow: `0 0 40px ${C.accent}08`,
@@ -140,24 +153,28 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
         <div style={{ color: C.textMuted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, marginBottom: 6 }}>
           TOTAL NET WORTH
         </div>
-        {/* 淨值大數字 */}
+        {/* 淨值大數字（桌機 36px / 手機 26px）*/}
         <div style={{
-          color: C.accent, fontSize: 36, fontWeight: 700,
+          color: C.accent, fontSize: isMobile ? 26 : 36, fontWeight: 700,
           fontFamily: "'JetBrains Mono', monospace",
           letterSpacing: "-0.03em", lineHeight: 1.1,
         }}>
           NT${fmt(netWorth)}
         </div>
 
-        {/* 摘要行：總資產、總負債、未實現 */}
-        <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
-          <span style={{ color: C.textMuted, fontSize: 12 }}>
+        {/* 摘要行：總資產、總負債、未實現（手機允許換行）*/}
+        <div style={{
+          display: "flex", flexWrap: "wrap",
+          gap: isMobile ? "8px 12px" : 20,
+          marginTop: 10,
+        }}>
+          <span style={{ color: C.textMuted, fontSize: isMobile ? 11 : 12 }}>
             總資產 <span style={{ color: C.blue, fontWeight: 600, fontFamily: "monospace" }}>NT${fmtM(totalAssets)}</span>
           </span>
-          <span style={{ color: C.textMuted, fontSize: 12 }}>
+          <span style={{ color: C.textMuted, fontSize: isMobile ? 11 : 12 }}>
             總負債 <span style={{ color: C.red, fontWeight: 600, fontFamily: "monospace" }}>NT${fmtM(totalLiab)}</span>
           </span>
-          <span style={{ color: C.textMuted, fontSize: 12 }}>
+          <span style={{ color: C.textMuted, fontSize: isMobile ? 11 : 12 }}>
             未實現 <span style={{ color: totalPnl >= 0 ? C.accent : C.red, fontWeight: 600, fontFamily: "monospace" }}>
               {totalPnl >= 0 ? "+" : "-"}NT${fmtM(Math.abs(totalPnl))} ({totalPnlPct >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)
             </span>
@@ -174,7 +191,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
 
       {/* ── 週 / 月 / 年 結算 ───────────────────────────── */}
       {periodReturns.length > 0 && periodReturns.some(r => r.delta !== null) && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+        <div className="wos-grid-3">
           {periodReturns.map(({ label, icon, delta, pct: pctChange }) => {
             const hasData = delta !== null;
             const isPos = hasData && delta >= 0;
@@ -242,7 +259,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 16, color: C.text }}>
             資產 · 負債 · 淨值趨勢
           </div>
-          <ResponsiveContainer width="100%" height={220}>
+          <ResponsiveContainer width="100%" height={isMobile ? 150 : 220}>
             <AreaChart data={snapshots}>
               <defs>
                 {[["net", C.accent], ["assets", C.blue], ["liabilities", C.red]].map(([k, c]) => (
@@ -268,8 +285,8 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
             </AreaChart>
           </ResponsiveContainer>
 
-          {/* 圖例 */}
-          <div style={{ display: "flex", gap: 16, justifyContent: "flex-end", marginTop: 8 }}>
+          {/* 圖例（手機允許換行）*/}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: isMobile ? "6px 10px" : 16, justifyContent: "flex-end", marginTop: 8 }}>
             {[["淨值", C.accent], ["總資產", C.blue], ["總負債", C.red], ["財務槓桿", C.orange]].map(([l, c]) => (
               <div key={l} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <div style={{ width: 14, height: 2, background: c, borderRadius: 1 }} />
@@ -288,9 +305,12 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       {pieData.length > 0 && (
         <Card style={{ padding: 20 }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: C.text }}>資產配置</div>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={isMobile ? 150 : 180}>
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={78} paddingAngle={5} dataKey="value">
+              <Pie data={pieData} cx="50%" cy="50%"
+                innerRadius={isMobile ? 36 : 50}
+                outerRadius={isMobile ? 58 : 78}
+                paddingAngle={5} dataKey="value">
                 {pieData.map((_, i) => <Cell key={i} fill={pieColors[i]} />)}
               </Pie>
               <Tooltip {...TT} formatter={v => `NT$${fmtM(v)}`} />

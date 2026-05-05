@@ -86,39 +86,35 @@ export default function Pledge({ pledges, reload }) {
     }
   };
 
-  // ── 一鍵更新股價（含錯誤處理）────────────────────────────
+  // ── 一鍵更新股價（透過 /api/update-prices，資料源：kline-api/yfinance）
+  // pledges 表更新已整合進 update-prices endpoint
   const refreshPrices = async () => {
     try {
       setFetching(true);
-      setFetchMsg("抓取股價中…");
+      setFetchMsg("抓取股價中…（yfinance）");
       setError(null);
-      const pledgesWithTicker = pledges.filter(p => p.ticker);
-      if (pledgesWithTicker.length === 0) {
-        setFetchMsg("ℹ️ 無需更新的質押");
-        setTimeout(() => setFetchMsg(""), 2000);
-        setFetching(false);
-        return;
+
+      const res  = await fetch("/api/update-prices", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+
+      const pledgeResults = json.pledgeResults || [];
+      const okCount       = pledgeResults.filter(r => r.ok).length;
+      const failCount     = pledgeResults.filter(r => !r.ok).length;
+
+      if (okCount === 0 && failCount === 0) {
+        setFetchMsg("ℹ️ 無質押標的需更新");
+      } else if (failCount > 0 && okCount === 0) {
+        setFetchMsg(`❌ 無法取得股價（${failCount} 筆失敗），請稍後再試`);
+      } else {
+        setFetchMsg(`✅ 已更新 ${okCount} 筆${failCount > 0 ? `，${failCount} 筆失敗` : ""}`);
       }
-      for (const p of pledgesWithTicker) {
-        const price = await fetchTWPrice(p.ticker);
-        if (price) {
-          const result = await supabase.from("pledges").update({
-            price, market_value: price * (p.shares || 0),
-          }).eq("id", p.id);
-          if (result.error) throw new Error(result.error.message);
-          setFetchMsg(`✅ ${p.ticker}: NT$${price}`);
-        } else {
-          setFetchMsg(`❌ ${p.ticker}: 無法取得股價`);
-        }
-      }
-      setFetchMsg("✅ 更新完成");
-      setTimeout(() => setFetchMsg(""), 3000);
+
+      setTimeout(() => setFetchMsg(""), 4000);
       reload();
     } catch (err) {
-      setFetching(false);
-      setFetchMsg("❌ 更新失敗");
+      setFetchMsg("❌ 更新失敗：" + err.message);
       setError(err.message);
-      alert(`⚠️ 股價更新失敗: ${err.message}`);
     } finally {
       setFetching(false);
     }
