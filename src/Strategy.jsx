@@ -304,6 +304,7 @@ function calcMonitorPerformance(klineData, { amount, target, j_entry, j_exit, st
   let cash   = amount * (1 - target);
   let shares = (amount * target) / closes[0];
   let rebalCount = 0;
+  const rebalEvents = []; // 記錄每次再平衡的日期與方向，供圖表標記用
   const ASYM_DRIFT = 0.25; // P-002 非對稱賣出偏移閾值（與 BacktestTab 一致）
 
   for (let i = 1; i < closes.length; i++) {
@@ -320,12 +321,13 @@ function calcMonitorPerformance(klineData, { amount, target, j_entry, j_exit, st
       else if (Math.abs(actualPct - target) >= ASYM_DRIFT) shouldRebal = true;
     } else if (strategy_mode === 'p007') {
       // P-007：訊號 AND 偏離同時達標
-      const driftPct = Math.abs(actualPct - target) * 100;
       if (buySigs.has(i)  && actualPct * 100 < target * 100 - gate_pct) shouldRebal = true;
       if (sellSigs.has(i) && actualPct * 100 > target * 100 + gate_pct) shouldRebal = true;
     }
 
     if (shouldRebal) {
+      const rebalType = actualPct < target ? 'BUY' : 'SELL'; // 買不足 → 買入，超標 → 賣出
+      rebalEvents.push({ date: data[i].date, type: rebalType });
       const t = shares * closes[i] + cash;
       shares = (t * target) / closes[i];
       cash   = t * (1 - target);
@@ -342,7 +344,7 @@ function calcMonitorPerformance(klineData, { amount, target, j_entry, j_exit, st
   const bhValue  = bhShares * lastClose;
   const bhReturn = (bhValue  - amount) / amount * 100;
 
-  return { simValue, simReturn, bhValue, bhReturn, rebalCount };
+  return { simValue, simReturn, bhValue, bhReturn, rebalCount, rebalEvents };
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
@@ -397,7 +399,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
 
     // P-007：箭頭標記只是基礎 KDJ+布林訊號，不代表已達雙重確認條件
     const isP007 = strategyMode === 'p007';
-    candleSeries.setMarkers(signals.map(s => ({
+    let allMarkers = signals.map(s => ({
       time: data[s.index].date,
       position: s.type==='BUY' ? 'belowBar' : 'aboveBar',
       color: s.type==='BUY' ? C.accent : C.red,
@@ -405,7 +407,37 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       text: isP007
         ? (s.type==='BUY' ? '訊號↑' : '訊號↓')
         : (s.type==='BUY' ? '再平衡↑' : '再平衡↓'),
-    })));
+    }));
+
+    // ── 進場日後的再平衡執行標記（金色圓圈，與訊號箭頭區分）──
+    // 有填入進場日期 + 進場金額時，從 calcMonitorPerformance 取回每次實際執行的再平衡日期
+    // P-007：訊號箭頭 ≠ 執行點（雙重確認才執行），金圈能清楚標示哪幾次真的打了
+    // 其他模式：金圈與訊號箭頭重疊，強化視覺確認「這根K棒確實執行了再平衡」
+    if (tickerConfig?.entry_date && tickerConfig?.amount) {
+      const execPerf = calcMonitorPerformance(data, {
+        amount:        tickerConfig.amount,
+        target:        tickerConfig.target        ?? target,
+        j_entry:       tickerConfig.j_entry       ?? jEntry,
+        j_exit:        tickerConfig.j_exit         ?? jExit,
+        strategy_mode: tickerConfig.strategy_mode ?? strategyMode,
+        gate_pct:      tickerConfig.gate_pct       ?? gatePct,
+        entry_date:    tickerConfig.entry_date,
+      });
+      if (execPerf?.rebalEvents?.length) {
+        const execMarkers = execPerf.rebalEvents.map(e => ({
+          time:     e.date,
+          position: e.type === 'BUY' ? 'belowBar' : 'aboveBar',
+          color:    '#FFD700',
+          shape:    'circle',
+          text:     e.type === 'BUY' ? '✓買' : '✓賣',
+        }));
+        allMarkers = [...allMarkers, ...execMarkers];
+      }
+    }
+
+    // lightweight-charts 要求 markers 按時間升序排列
+    allMarkers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+    candleSeries.setMarkers(allMarkers);
 
     const kdjChart = createChart(kdjRef.current, { ...chartOpts, height:kdjH, timeScale:{ visible:false } });
     kdjInstance.current = kdjChart;
@@ -431,8 +463,8 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       if (chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; }
       if (kdjInstance.current) { kdjInstance.current.remove(); kdjInstance.current = null; }
     };
-  // winWidth 變化時重建圖表以套用新高度
-  }, [data, jEntry, jExit, chartH, kdjH]);
+  // winWidth 變化時重建圖表以套用新高度；tickerConfig 變化時重繪再平衡執行標記
+  }, [data, jEntry, jExit, chartH, kdjH, tickerConfig]);
 
   const closes = data.map(d => d.close);
   const highs  = data.map(d => d.high);
@@ -567,20 +599,13 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
             <div style={{fontWeight:600, color:C.textMuted, marginBottom:8, fontSize:11}}>
               📊 策略績效對比　進場：{tickerConfig.entry_date}　初始：{fmtVal(tickerConfig.amount)}
             </div>
-            <div style={{display:"grid", gridTemplateColumns: hasActual ? "1fr 1fr 1fr" : "1fr 1fr", gap:8}}>
+            <div style={{display:"grid", gridTemplateColumns: hasActual ? "1fr 1fr" : "1fr", gap:8}}>
               {/* 策略模擬 */}
               <div style={{background:C.surface2, borderRadius:6, padding:"8px 10px"}}>
                 <div style={{color:C.textMuted, fontSize:10, marginBottom:4}}>策略模擬（嚴格執行）</div>
                 <div style={{color:C.accent, fontWeight:700, fontSize:14}}>{fmtPct(perf.simReturn)}</div>
                 <div style={{color:C.text, fontSize:11}}>{fmtVal(perf.simValue)}</div>
-                <div style={{color:C.textMuted, fontSize:10, marginTop:3}}>再平衡 {perf.rebalCount} 次</div>
-              </div>
-              {/* 買進持有 */}
-              <div style={{background:C.surface2, borderRadius:6, padding:"8px 10px"}}>
-                <div style={{color:C.textMuted, fontSize:10, marginBottom:4}}>買進持有對比</div>
-                <div style={{color:perf.bhReturn>=perf.simReturn?C.red:C.blue, fontWeight:700, fontSize:14}}>{fmtPct(perf.bhReturn)}</div>
-                <div style={{color:C.text, fontSize:11}}>{fmtVal(perf.bhValue)}</div>
-                <div style={{color:C.textMuted, fontSize:10, marginTop:3}}>策略{perf.simReturn-perf.bhReturn>=0?"+":""}{(perf.simReturn-perf.bhReturn).toFixed(1)}%</div>
+                <div style={{color:C.textMuted, fontSize:10, marginTop:3}}>再平衡 {perf.rebalCount} 次｜圖表金色圓圈標記</div>
               </div>
               {/* 實際庫存（有資產資料才顯示） */}
               {hasActual && (
@@ -601,12 +626,17 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       })()}
 
       <div ref={chartRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
-      <div style={{display:"flex", gap:12, padding:"6px 0", fontSize:11}}>
+      <div style={{display:"flex", gap:12, padding:"6px 0", fontSize:11, flexWrap:"wrap"}}>
         {[["K",C.blue],["D",C.gold],["J",C.accent],["超買/超賣",C.red+"90"]].map(([l,c])=>(
           <div key={l} style={{display:"flex", alignItems:"center", gap:4}}>
             <div style={{width:12, height:2, background:c}}/><span style={{color:C.textMuted}}>{l}</span>
           </div>
         ))}
+        {tickerConfig?.entry_date && tickerConfig?.amount && (
+          <div style={{display:"flex", alignItems:"center", gap:4}}>
+            <div style={{width:8, height:8, borderRadius:"50%", background:"#FFD700"}}/><span style={{color:C.textMuted}}>再平衡執行</span>
+          </div>
+        )}
       </div>
       <div ref={kdjRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
     </Card>
