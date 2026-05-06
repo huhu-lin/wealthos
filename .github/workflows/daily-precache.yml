@@ -35,7 +35,7 @@ jobs:
           BASE="https://wealthos-kline.onrender.com"
           DAYS=9999
 
-          TW_TICKERS=("0050" "0056" "006208" "00878" "00646" "00631L" "00692" "00757")
+          TW_TICKERS=("0050" "0056" "006208" "00878" "00646" "00675L" "00631L" "00692" "00757")
 
           echo "=== 台股 ETF 預載開始 ==="
           for t in "${TW_TICKERS[@]}"; do
