@@ -136,10 +136,10 @@ async function fetchTodayTWCandle(ticker) {
   }
 }
 
-async function fetchTWKline(ticker, days=720) {
+async function fetchTWKline(ticker, days=720, bypassCache=false) {
   const bd = bucketDays(days);           // 用大 bucket 查快取（命中率高）
   const cacheKey = `${ticker.toUpperCase()}_TW`;
-  const cached = await getKlineFromCache(cacheKey, bd);
+  const cached = bypassCache ? null : await getKlineFromCache(cacheKey, bd);
 
   let result;
   if (cached) {
@@ -166,9 +166,9 @@ async function fetchTWKline(ticker, days=720) {
   return result;
 }
 
-async function fetchUSKline(ticker, days=720) {
+async function fetchUSKline(ticker, days=720, bypassCache=false) {
   const bd = bucketDays(days);
-  const cached = await getKlineFromCache(ticker.toUpperCase(), bd);
+  const cached = bypassCache ? null : await getKlineFromCache(ticker.toUpperCase(), bd);
   if (cached) return filterByDays(cached, days);
 
   try {
@@ -635,7 +635,11 @@ function MonitorTab({ allAssets }) {
     // 逐一抓，顯示進度（避免同時打太多 API）
     for (const t of list) {
       setLoadingTicker(t.ticker);
-      map[t.ticker] = t.is_us ? await fetchUSKline(t.ticker) : await fetchTWKline(t.ticker);
+      // 監控 bypass 瀏覽器端 Supabase 快取 → 直打 kline-api（有修正過的 stale check）
+      // 確保監控永遠拿到 kline-api 判斷後的最新資料，不被舊快取卡住
+      map[t.ticker] = t.is_us
+        ? await fetchUSKline(t.ticker, 720, true)
+        : await fetchTWKline(t.ticker, 720, true);
     }
     setKlineMap(map);
     setLoadingTicker("");
