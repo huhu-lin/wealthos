@@ -77,7 +77,39 @@ async function getKlineFromCache(cacheKey, days) {
       .order("days", { ascending: true })
       .limit(1);
     if (data?.[0]?.data) {
+      const parsed = JSON.parse(data[0].data);
+      // ── 內容新鮮度驗證：最後K棒超過5天視為陳舊資料，強制重抓 ──
+      // 防禦 kline-api 曾寫入陳舊資料的情況（保底機制）
+      // 5天門檻：涵蓋週末(3天)+假日(1天)+緩衝(1天)
+      if (parsed?.length > 0) {
+        const lastBarDate = new Date(parsed[parsed.length - 1].date + 'T00:00:00Z');
+        const daysSinceLastBar = Math.floor((Date.now() - lastBarDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSinceLastBar > 5) {
+          console.warn(`[cache stale content] ${cacheKey}: last bar=${parsed[parsed.length-1].date} (${daysSinceLastBar}d ago) → reject`);
+          return null;
+        }
+      }
       console.log(`[cache hit] ${cacheKey} date=${data[0].cached_date} cached=${data[0].days}d needed=${days}d`);
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+// ─── 保底快取查詢：不限 cached_date（Render 失敗時防止空圖表）────────────
+// 只在 fetchFromProxy 失敗後呼叫，寧可顯示稍舊的資料也不顯示空圖表
+async function getKlineFromCacheStale(cacheKey, days) {
+  try {
+    const { data } = await supabase
+      .from("kline_cache")
+      .select("data, days, cached_date")
+      .eq("ticker", cacheKey)
+      .gte("days", days)
+      .order("cached_date", { ascending: false })
+      .order("days", { ascending: true })
+      .limit(1);
+    if (data?.[0]?.data) {
+      console.warn(`[stale fallback] ${cacheKey} cached_date=${data[0].cached_date} (Render 失敗保底)`);
       return JSON.parse(data[0].data);
     }
   } catch {}
@@ -149,7 +181,10 @@ async function fetchTWKline(ticker, days=720, bypassCache=false) {
       const data = await fetchFromProxy(`/api/kline-tw?ticker=${encodeURIComponent(ticker)}&days=${bd}`);
       result = filterByDays(data, days);
     } catch(e) {
-      console.error(`[fetchTWKline] 失敗:`, e);
+      console.error(`[fetchTWKline] Render 失敗，嘗試保底快取:`, e);
+      // Render 冷啟動超時時：用任意日期的舊快取顯示圖表，避免空圖/破圖
+      const stale = await getKlineFromCacheStale(cacheKey, bd);
+      if (stale) return filterByDays(stale, days);
       return [];
     }
   }
@@ -175,7 +210,10 @@ async function fetchUSKline(ticker, days=720, bypassCache=false) {
     const data = await fetchFromProxy(`/api/kline-us?ticker=${encodeURIComponent(ticker)}&days=${bd}`);
     return filterByDays(data, days);
   } catch(e) {
-    console.error(`[fetchUSKline] 失敗:`, e);
+    console.error(`[fetchUSKline] Render 失敗，嘗試保底快取:`, e);
+    // Render 冷啟動超時時：用任意日期的舊快取顯示圖表，避免空圖/破圖
+    const stale = await getKlineFromCacheStale(ticker.toUpperCase(), bd);
+    if (stale) return filterByDays(stale, days);
     return [];
   }
 }
@@ -635,11 +673,11 @@ function MonitorTab({ allAssets }) {
     // 逐一抓，顯示進度（避免同時打太多 API）
     for (const t of list) {
       setLoadingTicker(t.ticker);
-      // 監控 bypass 瀏覽器端 Supabase 快取 → 直打 kline-api（有修正過的 stale check）
-      // 確保監控永遠拿到 kline-api 判斷後的最新資料，不被舊快取卡住
+      // 優先用 Supabase 快取（快）；kline-api 已修正 US stale check（D-025）
+      // getKlineFromCache 內建內容新鮮度驗證（>5天拒絕）；Render 失敗時走保底快取
       map[t.ticker] = t.is_us
-        ? await fetchUSKline(t.ticker, 720, true)
-        : await fetchTWKline(t.ticker, 720, true);
+        ? await fetchUSKline(t.ticker, 720)
+        : await fetchTWKline(t.ticker, 720);
     }
     setKlineMap(map);
     setLoadingTicker("");
