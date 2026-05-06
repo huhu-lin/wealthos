@@ -13,34 +13,32 @@ function getSupabase(req) {
   );
 }
 
-// 統一走自有 kline-api（Render/yfinance），捨棄 FinMind 依賴
-const KLINE_API = process.env.KLINE_API_URL || "https://wealthos-kline.onrender.com";
-
-// ── 透過 kline-api 取最新收盤價（台股 or 美股）────────────
-// 抓最近 10 天還原K線，取最後一根 close
-// timeout 60 秒：Render 冷啟動最長約 50 秒
+// ── 直接從 Yahoo Finance 抓最新收盤價（不經 Render/kline-api）─────────
+// 優點：無冷啟動、<5 秒、Edge Function 30s 上限輕鬆應對
+// 台股 ticker 格式：006208.TW、00675L.TW
+// 美股 ticker 格式：QLD、SPY（直接用）
 async function fetchLatestPrice(ticker, isUS) {
   try {
-    const endpoint = isUS
-      ? `${KLINE_API}/kline/us?ticker=${encodeURIComponent(ticker)}&days=10`
-      : `${KLINE_API}/kline/tw?ticker=${encodeURIComponent(ticker)}&days=10`;
-    const res = await fetch(endpoint, { signal: AbortSignal.timeout(50000) });
+    const symbol = isUS ? ticker.toUpperCase() : `${ticker.toUpperCase()}.TW`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!res.ok) {
-      console.warn(`[fetchLatestPrice] ${ticker} HTTP ${res.status}`);
+      console.warn(`[fetchLatestPrice] ${symbol} HTTP ${res.status}`);
       return null;
     }
     const json = await res.json();
-    const data = json.data || [];
-    if (data.length > 0) {
-      const price = data[data.length - 1].close;
-      console.log(`[fetchLatestPrice] ${ticker} → ${isUS ? '$' : 'NT$'}${price}`);
-      return price;
-    }
-    console.warn(`[fetchLatestPrice] ${ticker}: 回傳空資料`);
+    const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
+    const price = closes.filter(v => v != null).at(-1) ?? null;
+    if (price) console.log(`[fetchLatestPrice] ${symbol} → ${isUS ? '$' : 'NT$'}${price}`);
+    else console.warn(`[fetchLatestPrice] ${symbol}: 無收盤價`);
+    return price;
   } catch(e) {
-    console.error(`[fetchLatestPrice] ${ticker} error:`, e.message);
+    console.error(`[fetchLatestPrice] ${ticker}:`, e.message);
+    return null;
   }
-  return null;
 }
 
 // ── 加密貨幣現價（CoinGecko，無 FinMind 替代）─────────────
@@ -186,6 +184,6 @@ export default async function handler(req) {
   });
 }
 
-// Serverless Function（非 Edge）：Hobby plan 最多 60 秒，足夠 Render 冷啟動
-// Edge Function 只有 30 秒，Render 冷啟動 30-50s 必 504
-export const config = { maxDuration: 60 };
+// Edge Function：Yahoo Finance 直連 <5s，30s 上限完全夠用
+// 不再依賴 Render/kline-api（冷啟動 30-50s，是之前 504 的根因）
+export const config = { runtime: 'edge' };
