@@ -1,12 +1,16 @@
 name: Morning Brief Generator
 
-# 每天台灣時間 08:00（UTC 00:00）自動執行
+# 每天台灣時間 06:30（UTC 22:30 前一天）自動執行
+# 選 UTC 22:30 原因：
+#   1. 避開 UTC 00:00 GitHub 免費方案高峰時段（延遲最嚴重）
+#   2. 台股前日收盤（UTC 05:30）已過 17 小時，yfinance 資料確定已更新
+#   3. TWN 06:30 仍在開盤前，盤前摘要時機正確
 # 抓取總經指標 + 財經新聞 → Gemini AI 生成盤前摘要 → 存 Supabase
-# 前端監控分頁開啟時直接讀取，無需等待
+# 前端總覽頁開啟時直接讀取，無需等待
 
 on:
   schedule:
-    - cron: "0 0 * * 1-5"   # UTC 00:00 = TWN 08:00，週一到週五
+    - cron: "30 22 * * 0-4"  # UTC 22:30 Sun-Thu = TWN 06:30 Mon-Fri（開盤前）
   workflow_dispatch:          # 允許手動觸發（測試用）
 
 jobs:

@@ -1,9 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+// 前端呼叫時帶 Authorization: Bearer <user_jwt>
+// 用 ANON_KEY + user JWT 建立有身份的 client，auth.uid() 正確 → RLS 正常運作
+// 不需要 SERVICE_KEY，也不需要在 Vercel 加新的環境變數
+function getSupabase(req) {
+  const authHeader = req.headers.get('Authorization') || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  return createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY,
+    token ? { global: { headers: { Authorization: `Bearer ${token}` } } } : {}
+  );
+}
 
 // 統一走自有 kline-api（Render/yfinance），捨棄 FinMind 依賴
 const KLINE_API = process.env.KLINE_API_URL || "https://wealthos-kline.onrender.com";
@@ -72,6 +80,7 @@ export default async function handler(req) {
 
   console.log('[update-prices] 開始更新資產現價（資料源：kline-api/yfinance）...');
 
+  const supabase = getSupabase(req);
   const { data: assets } = await supabase.from('assets').select('*');
   if (!assets?.length) {
     console.log('[update-prices] 沒有資產，結束');
@@ -154,26 +163,22 @@ export default async function handler(req) {
   const failCount    = results.filter(r => !r.ok).length;
   console.log(`[update-prices] assets 完成：成功 ${successCount} / 失敗 ${failCount}`);
 
-  // ── 存每日淨值快照 ────────────────────────────────────────
+  // ── 存每日淨值快照（upsert：每次更新股價後都刷新今日快照）──────────
+  // 注意：改為 upsert 而非 insert-if-not-exists
+  // 因為 App.jsx 在頁面載入時就寫入快照（使用當時的舊股價）
+  // 用戶按「更新股價」後若快照不更新，圖表當日資料點仍是舊值
   try {
     const today = new Date().toISOString().slice(0, 10);
-    const { data: existing } = await supabase
-      .from('monthly_snapshots').select('id').eq('date', today).single();
-
-    if (!existing) {
-      const { data: latestAssets } = await supabase.from('assets').select('*');
-      const { data: liabilities }  = await supabase.from('liabilities').select('*');
-      const totalAssets = (latestAssets || []).reduce((s, x) => s + (x.value_twd || 0), 0);
-      const totalLiab   = (liabilities  || []).reduce((s, x) => s + x.value, 0);
-      const net         = totalAssets - totalLiab;
-      const leverage    = net > 0 ? totalAssets / net : 0;
-      await supabase.from('monthly_snapshots').insert({
-        date: today, assets: totalAssets, liabilities: totalLiab, net, leverage
-      });
-      console.log(`[update-prices] 快照已存：${today}, 淨值 NT$${Math.round(net)}`);
-    } else {
-      console.log(`[update-prices] 今日快照已存在，跳過`);
-    }
+    const { data: latestAssets } = await supabase.from('assets').select('*');
+    const { data: liabilities }  = await supabase.from('liabilities').select('*');
+    const totalAssets = (latestAssets || []).reduce((s, x) => s + (x.value_twd || 0), 0);
+    const totalLiab   = (liabilities  || []).reduce((s, x) => s + x.value, 0);
+    const net         = totalAssets - totalLiab;
+    const leverage    = net > 0 ? totalAssets / net : 0;
+    await supabase.from('monthly_snapshots').upsert({
+      date: today, assets: totalAssets, liabilities: totalLiab, net, leverage
+    }, { onConflict: 'date' });
+    console.log(`[update-prices] 快照 upsert 完成：${today}, 淨值 NT$${Math.round(net)}`);
   } catch(e) {
     console.error('[update-prices] 存快照失敗:', e.message);
   }

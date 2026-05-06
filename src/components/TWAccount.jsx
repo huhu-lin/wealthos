@@ -116,7 +116,12 @@ export default function TWAccount({ assets, reload }) {
       setFetchMsg("抓取股價中…（yfinance）");
       setError(null);
 
-      const res  = await fetch("/api/update-prices", { method: "POST" });
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res  = await fetch("/api/update-prices", {
+        method: "POST",
+        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
 
