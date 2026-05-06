@@ -78,14 +78,14 @@ async function getKlineFromCache(cacheKey, days) {
       .limit(1);
     if (data?.[0]?.data) {
       const parsed = JSON.parse(data[0].data);
-      // ── 內容新鮮度驗證：最後K棒超過5天視為陳舊資料，強制重抓 ──
-      // 防禦 kline-api 曾寫入陳舊資料的情況（保底機制）
-      // 5天門檻：涵蓋週末(3天)+假日(1天)+緩衝(1天)
+      // ── 內容新鮮度驗證：最後K棒超過3天視為陳舊資料，強制重抓 ──
+      // 3天門檻 = 涵蓋週末（最長空窗：週五收盤到週一查詢 = 3天）
+      // 超過3天代表不是正常週末，是真的資料問題（yfinance 寫入延遲等）
       if (parsed?.length > 0) {
         const lastBarDate = new Date(parsed[parsed.length - 1].date + 'T00:00:00Z');
         const daysSinceLastBar = Math.floor((Date.now() - lastBarDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysSinceLastBar > 5) {
-          console.warn(`[cache stale content] ${cacheKey}: last bar=${parsed[parsed.length-1].date} (${daysSinceLastBar}d ago) → reject`);
+        if (daysSinceLastBar > 3) {
+          console.warn(`[cache stale content] ${cacheKey}: last bar=${parsed[parsed.length-1].date} (${daysSinceLastBar}d ago) → reject, force refetch`);
           return null;
         }
       }
