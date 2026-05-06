@@ -1,0 +1,52 @@
+name: Daily Pre-cache US ETFs
+
+# 每天 UTC 23:30（台灣時間 07:30）預先快取美股 ETF
+# 時機選擇：
+#   - 美股收盤：UTC 20:00（夏令 EDT）/ 21:00（冬令 EST）
+#   - UTC 23:30 = 收盤後 2.5-3.5 小時，yfinance 資料確定已更新
+#   - 早於台灣 09:00 開盤（TWN 07:30），用戶查詢前已預載完成
+# 過去問題：UTC 22:00 時 yfinance 有時尚未更新美股收盤，導致快取寫入舊資料
+# GitHub Actions 每次約 15-25 分鐘（9 支 ETF × 200s max-time）
+
+on:
+  schedule:
+    - cron: "30 23 * * *"   # UTC 23:30 = 台灣時間 07:30
+  workflow_dispatch:         # 允許手動觸發（例如快取異常時手動重跑）
+
+jobs:
+  precache-us:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Pre-cache US ETFs and Leveraged ETFs
+        run: |
+          BASE="https://wealthos-kline.onrender.com"
+          DAYS=9999
+
+          US_TICKERS=("SPY" "QQQ" "VOO" "VTI" "VT" "QLD" "TQQQ" "SSO" "UPRO")
+
+          echo "=== 美股 ETF 預載開始（UTC 23:30）==="
+          echo "yfinance 在美股收盤後 3.5 小時，資料應已穩定更新"
+          for t in "${US_TICKERS[@]}"; do
+            echo "→ 預載 $t ($DAYS 天)..."
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 200 \
+              "$BASE/kline/us?ticker=$t&days=$DAYS" || echo "timeout")
+            echo "  $t → HTTP $STATUS"
+            sleep 3
+          done
+          echo "=== 美股 ETF 預載完成 ==="
+
+      - name: Verify last bar dates
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          echo "=== 驗證美股快取最後 K 棒日期 ==="
+          # 查詢今日寫入的美股快取，確認 last_bar_date 符合預期
+          RESULT=$(curl -s \
+            "${SUPABASE_URL}/rest/v1/kline_cache?ticker=in.(QLD,QQQ,SPY)&days=eq.9999&cached_date=gte.$(date -d '1 day ago' +%Y-%m-%d)&select=ticker,days,cached_date" \
+            -H "apikey: ${SUPABASE_SERVICE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}")
+          echo "快取狀態：$RESULT"
+          echo "✅ 美股預載完成，請確認 last_bar_date 為最近交易日"
