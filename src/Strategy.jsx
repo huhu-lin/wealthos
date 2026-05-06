@@ -375,7 +375,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       </div>
       {strategyMode === 'p007' && (
         <div style={{fontSize:11, color:C.textMuted, marginBottom:8, paddingLeft:2}}>
-          圖表箭頭（訊號↑↓）為 KDJ+布林基礎訊號，僅供參考；需同時偏離 ≥ {gatePct}% 才實際觸發 P-007 再平衡
+          圖表箭頭（訊號↑↓）為 KDJ+布林訊號，僅供參考｜P-007 邏輯：偏離 ≥ {gatePct}% 為「待觸發」狀態，此時訊號出現才執行再平衡；偏離不足時訊號無效
         </div>
       )}
       {total > 0 && (() => {
