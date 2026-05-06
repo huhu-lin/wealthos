@@ -282,8 +282,71 @@ function checkSignals(closes, bb, kdj, jEntry=10, jExit=90, strategyMode='signal
   return signals;
 }
 
+// ─── 監控策略績效模擬 ─────────────────────────────────────────
+// 從進場日起，模擬嚴格執行策略的績效，用來與實際庫存比較
+// 幣別說明：amount 跟 closes 都是同一幣別（美股=USD，台股=TWD），不需匯率轉換
+function calcMonitorPerformance(klineData, { amount, target, j_entry, j_exit, strategy_mode, gate_pct, entry_date }) {
+  if (!amount || !entry_date || !klineData?.length) return null;
+  const data = klineData.filter(d => d.date >= entry_date);
+  if (data.length < 20) return null; // 資料不足（< 20根K棒），無法穩定計算指標
+
+  const closes = data.map(d => d.close);
+  const highs  = data.map(d => d.high  || d.close);
+  const lows   = data.map(d => d.low   || d.close);
+
+  const bb      = calcBB(closes);
+  const kdj     = calcKDJ(closes, highs, lows);
+  const signals = checkSignals(closes, bb, kdj, j_entry, j_exit, strategy_mode);
+  const buySigs  = new Set(signals.filter(s => s.type === 'BUY').map(s => s.index));
+  const sellSigs = new Set(signals.filter(s => s.type === 'SELL').map(s => s.index));
+
+  // 初始組合：target 比例買入 ETF，其餘為現金
+  let cash   = amount * (1 - target);
+  let shares = (amount * target) / closes[0];
+  let rebalCount = 0;
+  const ASYM_DRIFT = 0.25; // P-002 非對稱賣出偏移閾值（與 BacktestTab 一致）
+
+  for (let i = 1; i < closes.length; i++) {
+    const total     = shares * closes[i] + cash;
+    const actualPct = (shares * closes[i]) / total; // 0~1
+
+    let shouldRebal = false;
+
+    if (strategy_mode === 'signal') {
+      if (buySigs.has(i) || sellSigs.has(i)) shouldRebal = true;
+    } else if (strategy_mode === 'asymmetric') {
+      // P-002：KDJ 訊號買入，持倉偏移 ≥ 25% 賣出
+      if (buySigs.has(i)) shouldRebal = true;
+      else if (Math.abs(actualPct - target) >= ASYM_DRIFT) shouldRebal = true;
+    } else if (strategy_mode === 'p007') {
+      // P-007：訊號 AND 偏離同時達標
+      const driftPct = Math.abs(actualPct - target) * 100;
+      if (buySigs.has(i)  && actualPct * 100 < target * 100 - gate_pct) shouldRebal = true;
+      if (sellSigs.has(i) && actualPct * 100 > target * 100 + gate_pct) shouldRebal = true;
+    }
+
+    if (shouldRebal) {
+      const t = shares * closes[i] + cash;
+      shares = (t * target) / closes[i];
+      cash   = t * (1 - target);
+      rebalCount++;
+    }
+  }
+
+  const lastClose = closes[closes.length - 1];
+  const simValue  = shares * lastClose + cash;
+  const simReturn = (simValue - amount) / amount * 100;
+
+  // 買進持有對比（全額投入，不留現金，公平比較）
+  const bhShares = amount / closes[0];
+  const bhValue  = bhShares * lastClose;
+  const bhReturn = (bhValue  - amount) / amount * 100;
+
+  return { simValue, simReturn, bhValue, bhReturn, rebalCount };
+}
+
 // ─── 圖表元件 ────────────────────────────────────────────────
-function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13 }) {
+function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13, tickerConfig=null }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -462,6 +525,81 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
           </div>
         );
       })()}
+
+      {/* ── 策略績效面板：進場金額 + 進場日期填寫後才顯示 ── */}
+      {(() => {
+        if (!tickerConfig?.amount || !tickerConfig?.entry_date) return null;
+        const perf = calcMonitorPerformance(data, {
+          amount:        tickerConfig.amount,
+          target:        tickerConfig.target || target,
+          j_entry:       tickerConfig.j_entry || jEntry,
+          j_exit:        tickerConfig.j_exit  || jExit,
+          strategy_mode: tickerConfig.strategy_mode || strategyMode,
+          gate_pct:      tickerConfig.gate_pct || gatePct,
+          entry_date:    tickerConfig.entry_date,
+        });
+        if (!perf) return (
+          <div style={{padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}`, fontSize:12, color:C.textMuted, marginBottom:12}}>
+            📊 進場日期後資料不足（需至少 20 根K棒），無法計算策略模擬績效
+          </div>
+        );
+
+        const currSymbol  = isUS ? "USD" : "NT$";
+        const fmtVal = v => isUS ? `USD ${v.toLocaleString("en-US",{maximumFractionDigits:0})}` : `NT$${fmt(v)}`;
+        const fmtPct = (v, showSign=true) => `${showSign && v>=0?"+":""}${v.toFixed(1)}%`;
+
+        // 實際庫存現值（從 assets 讀，若無則顯示 —）
+        const cashName   = isUS ? 'USD' : '現金';
+        const holdA      = assets.find(a => a.name === ticker);
+        const cashA      = assets.find(a => a.name === cashName);
+        const actualNow  = (holdA?.value_twd || 0) + (cashA?.value_twd || 0);
+        // 轉換為原始幣別（美股：除以匯率近似值，台股直接用 TWD）
+        // 注意：這裡只做粗略換算，用 assets 表的 USD 欄位更精確
+        const actualNowNative = isUS
+          ? ((holdA?.value_usd || 0) + (cashA?.value_usd || holdA?.value_twd / 32 || 0))
+          : actualNow;
+        const hasActual = actualNow > 0;
+        const actualReturn = hasActual ? (actualNowNative - tickerConfig.amount) / tickerConfig.amount * 100 : null;
+        const execGap = (actualReturn !== null) ? (actualReturn - perf.simReturn) : null;
+
+        return (
+          <div style={{marginBottom:12, padding:"12px 14px", background:C.surface, borderRadius:8, border:`1px solid ${C.border}40`, fontSize:12}}>
+            <div style={{fontWeight:600, color:C.textMuted, marginBottom:8, fontSize:11}}>
+              📊 策略績效對比　進場：{tickerConfig.entry_date}　初始：{fmtVal(tickerConfig.amount)}
+            </div>
+            <div style={{display:"grid", gridTemplateColumns: hasActual ? "1fr 1fr 1fr" : "1fr 1fr", gap:8}}>
+              {/* 策略模擬 */}
+              <div style={{background:C.surface2, borderRadius:6, padding:"8px 10px"}}>
+                <div style={{color:C.textMuted, fontSize:10, marginBottom:4}}>策略模擬（嚴格執行）</div>
+                <div style={{color:C.accent, fontWeight:700, fontSize:14}}>{fmtPct(perf.simReturn)}</div>
+                <div style={{color:C.text, fontSize:11}}>{fmtVal(perf.simValue)}</div>
+                <div style={{color:C.textMuted, fontSize:10, marginTop:3}}>再平衡 {perf.rebalCount} 次</div>
+              </div>
+              {/* 買進持有 */}
+              <div style={{background:C.surface2, borderRadius:6, padding:"8px 10px"}}>
+                <div style={{color:C.textMuted, fontSize:10, marginBottom:4}}>買進持有對比</div>
+                <div style={{color:perf.bhReturn>=perf.simReturn?C.red:C.blue, fontWeight:700, fontSize:14}}>{fmtPct(perf.bhReturn)}</div>
+                <div style={{color:C.text, fontSize:11}}>{fmtVal(perf.bhValue)}</div>
+                <div style={{color:C.textMuted, fontSize:10, marginTop:3}}>策略{perf.simReturn-perf.bhReturn>=0?"+":""}{(perf.simReturn-perf.bhReturn).toFixed(1)}%</div>
+              </div>
+              {/* 實際庫存（有資產資料才顯示） */}
+              {hasActual && (
+                <div style={{background:C.surface2, borderRadius:6, padding:"8px 10px", border:`1px solid ${execGap<-5?C.red+"60":execGap>0?C.accent+"60":C.border}`}}>
+                  <div style={{color:C.textMuted, fontSize:10, marginBottom:4}}>實際庫存</div>
+                  <div style={{color:actualReturn>=0?C.accent:C.red, fontWeight:700, fontSize:14}}>{fmtPct(actualReturn)}</div>
+                  <div style={{color:C.text, fontSize:11}}>{fmtVal(actualNowNative)}</div>
+                  {execGap !== null && (
+                    <div style={{color:execGap<0?C.red:C.accent, fontSize:10, marginTop:3}}>
+                      執行落差 {fmtPct(execGap)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       <div ref={chartRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
       <div style={{display:"flex", gap:12, padding:"6px 0", fontSize:11}}>
         {[["K",C.blue],["D",C.gold],["J",C.accent],["超買/超賣",C.red+"90"]].map(([l,c])=>(
@@ -656,7 +794,7 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
 // 頁面被瀏覽器回收（Page Discard）後重載，從 sessionStorage 還原填寫中的草稿
 // 避免用戶切換視窗核對資料後回來發現表單清空
 const MONITOR_FORM_DRAFT_KEY = 'wealthos_monitor_form_draft';
-const MONITOR_FORM_DEFAULT = { ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal', gate_pct:13 };
+const MONITOR_FORM_DEFAULT = { ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, entry_date:"", strategy_mode:'signal', gate_pct:13 };
 
 function MonitorTab({ allAssets }) {
   const [tickers, setTickers] = useState([]);
@@ -737,7 +875,7 @@ function MonitorTab({ allAssets }) {
   }
 
   function handleEdit(t) {
-    const editForm = { ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount||0, strategy_mode:t.strategy_mode||'signal', gate_pct:t.gate_pct||13 };
+    const editForm = { ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount||0, entry_date:t.entry_date||"", strategy_mode:t.strategy_mode||'signal', gate_pct:t.gate_pct||13 };
     setForm(editForm);
     try { sessionStorage.setItem(MONITOR_FORM_DRAFT_KEY, JSON.stringify(editForm)); } catch {}
     setEditId(t.id);
@@ -810,6 +948,11 @@ function MonitorTab({ allAssets }) {
               <Input type="number" value={form.amount} onChange={e=>updateForm({amount:parseFloat(e.target.value)||0})} style={{width:"100%"}}
                 placeholder={form.is_us ? "如 10000 (USD)" : "如 500000 (NT$)"}/>
             </div>
+            <div>
+              <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>進場日期（策略模擬起算）</div>
+              <Input type="date" value={form.entry_date||""} onChange={e=>updateForm({entry_date:e.target.value})} style={{width:"100%", colorScheme:"dark"}}/>
+              <div style={{fontSize:10, color:C.textMuted, marginTop:3}}>填入後顯示策略模擬 vs 實際庫存對比</div>
+            </div>
           </div>
           <Btn onClick={handleSave}>{editId?"儲存修改":"確認新增"}</Btn>
         </Card>
@@ -852,6 +995,7 @@ function MonitorTab({ allAssets }) {
               strategyMode={t.strategy_mode||'signal'}
               driftPct={25}
               gatePct={t.gate_pct||13}
+              tickerConfig={t}
             />
           ))}
         </>
