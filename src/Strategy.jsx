@@ -294,12 +294,16 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
     lowerSeries.setData(data.map((d,i) => bb[i] ? { time:d.date, value:bb[i].lower } : null).filter(Boolean));
     basisSeries.setData(data.map((d,i) => bb[i] ? { time:d.date, value:bb[i].basis } : null).filter(Boolean));
 
+    // P-007：箭頭標記只是基礎 KDJ+布林訊號，不代表已達雙重確認條件
+    const isP007 = strategyMode === 'p007';
     candleSeries.setMarkers(signals.map(s => ({
       time: data[s.index].date,
       position: s.type==='BUY' ? 'belowBar' : 'aboveBar',
       color: s.type==='BUY' ? C.accent : C.red,
       shape: s.type==='BUY' ? 'arrowUp' : 'arrowDown',
-      text: s.type==='BUY' ? '再平衡↑' : '再平衡↓',
+      text: isP007
+        ? (s.type==='BUY' ? '訊號↑' : '訊號↓')
+        : (s.type==='BUY' ? '再平衡↑' : '再平衡↓'),
     })));
 
     const kdjChart = createChart(kdjRef.current, { ...chartOpts, height:kdjH, timeScale:{ visible:false } });
@@ -369,6 +373,11 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
         </div>
         {lastKDJ && <span style={{color:C.textMuted, fontSize:12, whiteSpace:"nowrap"}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
+      {strategyMode === 'p007' && (
+        <div style={{fontSize:11, color:C.textMuted, marginBottom:8, paddingLeft:2}}>
+          圖表箭頭（訊號↑↓）為 KDJ+布林基礎訊號，僅供參考；需同時偏離 ≥ {gatePct}% 才實際觸發 P-007 再平衡
+        </div>
+      )}
       {total > 0 && (() => {
         const driftNow = Math.abs(actualPct - targetPct);
 
