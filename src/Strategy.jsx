@@ -652,6 +652,12 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
 }
 
 // ─── 監控 Tab ────────────────────────────────────────────────
+// ─── 監控表單 sessionStorage 常數 ───────────────────────────────
+// 頁面被瀏覽器回收（Page Discard）後重載，從 sessionStorage 還原填寫中的草稿
+// 避免用戶切換視窗核對資料後回來發現表單清空
+const MONITOR_FORM_DRAFT_KEY = 'wealthos_monitor_form_draft';
+const MONITOR_FORM_DEFAULT = { ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal', gate_pct:13 };
+
 function MonitorTab({ allAssets }) {
   const [tickers, setTickers] = useState([]);
   const [klineMap, setKlineMap] = useState({});
@@ -659,7 +665,30 @@ function MonitorTab({ allAssets }) {
   const [loadingTicker, setLoadingTicker] = useState(""); // 顯示正在抓哪支
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal', gate_pct:13 });
+
+  // 初始化時從 sessionStorage 還原草稿（防止切換視窗後資料消失）
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(MONITOR_FORM_DRAFT_KEY);
+      if (saved) return { ...MONITOR_FORM_DEFAULT, ...JSON.parse(saved) };
+    } catch {}
+    return MONITOR_FORM_DEFAULT;
+  });
+
+  // 更新表單並同步寫入 sessionStorage
+  function updateForm(patch) {
+    setForm(prev => {
+      const next = { ...prev, ...patch };
+      try { sessionStorage.setItem(MONITOR_FORM_DRAFT_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  // 清除草稿（儲存成功或取消後呼叫）
+  function clearFormDraft() {
+    try { sessionStorage.removeItem(MONITOR_FORM_DRAFT_KEY); } catch {}
+    setForm(MONITOR_FORM_DEFAULT);
+  }
 
   async function loadTickers() {
     const { data } = await supabase.from("strategy_tickers").select("*").order("id");
@@ -696,7 +725,7 @@ function MonitorTab({ allAssets }) {
       await supabase.from("strategy_tickers").insert(form);
     }
     setShowAdd(false); setEditId(null);
-    setForm({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal', gate_pct:13 });
+    clearFormDraft(); // 儲存成功後清除 sessionStorage 草稿
     const list = await loadTickers();
     await loadKlines(list);
   }
@@ -708,7 +737,9 @@ function MonitorTab({ allAssets }) {
   }
 
   function handleEdit(t) {
-    setForm({ ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount, strategy_mode:t.strategy_mode||'signal', gate_pct:t.gate_pct||13 });
+    const editForm = { ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount||0, strategy_mode:t.strategy_mode||'signal', gate_pct:t.gate_pct||13 };
+    setForm(editForm);
+    try { sessionStorage.setItem(MONITOR_FORM_DRAFT_KEY, JSON.stringify(editForm)); } catch {}
     setEditId(t.id);
     setShowAdd(true);
   }
@@ -720,7 +751,10 @@ function MonitorTab({ allAssets }) {
           <div style={{fontWeight:700, fontSize:15, color:C.text}}>再平衡訊號監控</div>
           <div style={{color:C.textMuted, fontSize:12, marginTop:2}}>布林通道 (20,2) + KDJ (9,3,3)｜還原股價｜箭頭標記為訊號觸發點</div>
         </div>
-        <Btn onClick={()=>{ setShowAdd(!showAdd); setEditId(null); setForm({ticker:"",is_us:false,target:0.5,j_entry:10,j_exit:90,amount:0,strategy_mode:'signal',gate_pct:13}); }}>
+        <Btn onClick={()=>{
+          if (showAdd) { clearFormDraft(); setEditId(null); } // 取消時清除草稿
+          setShowAdd(!showAdd);
+        }}>
           {showAdd ? "✕ 取消" : "+ 新增股票"}
         </Btn>
       </div>
@@ -731,11 +765,11 @@ function MonitorTab({ allAssets }) {
           <div className="wos-grid-form">
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>股票代號</div>
-              <Input value={form.ticker} onChange={e=>setForm({...form, ticker:e.target.value.toUpperCase()})} placeholder="如 00675L / QLD" style={{width:"100%"}}/>
+              <Input value={form.ticker} onChange={e=>updateForm({ticker:e.target.value.toUpperCase()})} placeholder="如 00675L / QLD" style={{width:"100%"}}/>
             </div>
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>市場</div>
-              <select value={form.is_us} onChange={e=>setForm({...form, is_us:e.target.value==="true"})}
+              <select value={form.is_us} onChange={e=>updateForm({is_us:e.target.value==="true"})}
                 style={{background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"7px 10px", fontSize:12, width:"100%"}}>
                 <option value="false">台股</option>
                 <option value="true">美股</option>
@@ -743,19 +777,19 @@ function MonitorTab({ allAssets }) {
             </div>
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>目標佔比</div>
-              <Input type="number" value={form.target} onChange={e=>setForm({...form, target:parseFloat(e.target.value)})} placeholder="0.5 = 50%" style={{width:"100%"}}/>
+              <Input type="number" value={form.target} onChange={e=>updateForm({target:parseFloat(e.target.value)})} placeholder="0.5 = 50%" style={{width:"100%"}}/>
             </div>
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>J值進場閾值</div>
-              <Input type="number" value={form.j_entry} onChange={e=>setForm({...form, j_entry:parseFloat(e.target.value)})} style={{width:"100%"}}/>
+              <Input type="number" value={form.j_entry} onChange={e=>updateForm({j_entry:parseFloat(e.target.value)})} style={{width:"100%"}}/>
             </div>
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>J值出場閾值</div>
-              <Input type="number" value={form.j_exit} onChange={e=>setForm({...form, j_exit:parseFloat(e.target.value)})} style={{width:"100%"}}/>
+              <Input type="number" value={form.j_exit} onChange={e=>updateForm({j_exit:parseFloat(e.target.value)})} style={{width:"100%"}}/>
             </div>
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>策略模式</div>
-              <select value={form.strategy_mode} onChange={e=>setForm({...form, strategy_mode:e.target.value})}
+              <select value={form.strategy_mode} onChange={e=>updateForm({strategy_mode:e.target.value})}
                 style={{background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"7px 10px", fontSize:12, width:"100%"}}>
                 <option value="signal">原訊號再平衡（KDJ+布林）</option>
                 <option value="asymmetric">⚡ P-002 非對稱（KDJ買+偏移賣）</option>
@@ -765,12 +799,16 @@ function MonitorTab({ allAssets }) {
             {form.strategy_mode === 'p007' && (
               <div>
                 <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>Gate 偏離門檻（%）</div>
-                <Input type="number" value={form.gate_pct} onChange={e=>setForm({...form, gate_pct:parseInt(e.target.value)||13})} style={{width:"100%"}} placeholder="預設 13（美股建議 13，台股建議 20）"/>
+                <Input type="number" value={form.gate_pct} onChange={e=>updateForm({gate_pct:parseInt(e.target.value)||13})} style={{width:"100%"}} placeholder="預設 13（美股建議 13，台股建議 20）"/>
               </div>
             )}
             <div>
-              <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>進場金額 (NT$)</div>
-              <Input type="number" value={form.amount} onChange={e=>setForm({...form, amount:parseFloat(e.target.value)})} style={{width:"100%"}}/>
+              {/* 幣別跟著市場走：美股填 USD，台股填 NT$ — 與資產頁面一致 */}
+              <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>
+                進場金額 ({form.is_us ? "USD" : "NT$"})
+              </div>
+              <Input type="number" value={form.amount} onChange={e=>updateForm({amount:parseFloat(e.target.value)||0})} style={{width:"100%"}}
+                placeholder={form.is_us ? "如 10000 (USD)" : "如 500000 (NT$)"}/>
             </div>
           </div>
           <Btn onClick={handleSave}>{editId?"儲存修改":"確認新增"}</Btn>
