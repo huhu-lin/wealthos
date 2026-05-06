@@ -245,7 +245,7 @@ function checkSignals(closes, bb, kdj, jEntry=10, jExit=90, strategyMode='signal
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
-function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25 }) {
+function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13 }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -365,11 +365,40 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
           <Badge text={status} color={statusColor}/>
           <Badge text="還原股價" color={C.blue}/>
           {strategyMode === 'asymmetric' && <Badge text="⚡ P-002 非對稱" color={C.orange}/>}
+          {strategyMode === 'p007' && <Badge text="🔒 P-007 雙重確認" color="#FFD700"/>}
         </div>
         {lastKDJ && <span style={{color:C.textMuted, fontSize:12, whiteSpace:"nowrap"}}>J值 <span style={{color:lastKDJ.j>jExit?C.red:lastKDJ.j<jEntry?C.accent:C.textMuted, fontWeight:600}}>{lastKDJ.j.toFixed(1)}</span></span>}
       </div>
       {total > 0 && (() => {
         const driftNow = Math.abs(actualPct - targetPct);
+
+        // ── P-007 雙重確認：訊號 + 偏離同時達標才觸發 ──
+        if (strategyMode === 'p007') {
+          const signalActive = status === '蓄力中 ⚡' || status === '過熱中 🔥';
+          const driftMet = driftNow >= gatePct;
+          const bothMet  = signalActive && driftMet;
+          const borderCol = bothMet ? C.accent+"60" : (signalActive || driftMet) ? "#FFD70060" : C.border;
+          const gapDrift  = Math.max(0, gatePct - driftNow);
+          return (
+            <div style={{display:"flex", gap:12, flexWrap:"wrap", marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${borderCol}`, fontSize:12}}>
+              <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
+              <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
+              <span style={{color:C.textMuted}}>訊號 <span style={{color:signalActive?C.accent:C.textMuted, fontWeight:600}}>{signalActive?'✅ 成立':'⏳ 等待'}</span></span>
+              <span style={{color:C.textMuted}}>偏離 <span style={{color:driftMet?"#FFD700":C.textMuted, fontWeight:600}}>{driftNow.toFixed(1)}%</span> / gate <span style={{fontWeight:600}}>{gatePct}%</span></span>
+              {bothMet ? (
+                <span style={{color:C.accent, fontWeight:700}}>🎯 P-007 觸發！<span style={{color:diffAmt>0?C.accent:C.red}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
+              ) : signalActive ? (
+                <span style={{color:"#FFD700"}}>⚡ 訊號成立，等偏離再差 {gapDrift.toFixed(1)}%</span>
+              ) : driftMet ? (
+                <span style={{color:C.blue}}>📊 偏離達標，等KDJ+布林訊號</span>
+              ) : (
+                <span style={{color:C.textMuted}}>等雙重確認</span>
+              )}
+            </div>
+          );
+        }
+
+        // ── 原有邏輯（signal / asymmetric 模式）──
         const needsRebal = driftNow >= driftPct;
         const gapToTrigger = driftPct - driftNow;
         return (
@@ -439,6 +468,36 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
       } else if (j > t.j_exit) {
         signalStatus = 'J值高位'; signalColor = C.gold;
         advice = '已進入超買區，留意布林上軌';
+      }
+    }
+
+    // ── P-007 雙重確認：覆蓋 advice 顯示雙條件狀態 ──
+    const mode = t.strategy_mode || 'signal';
+    if (mode === 'p007') {
+      const cashName2 = t.is_us ? 'USD' : '現金';
+      const hAsset = allAssets.find(a => a.name === t.ticker);
+      const cAsset = allAssets.find(a => a.name === cashName2);
+      const hVal = hAsset?.value_twd || 0;
+      const cVal = cAsset?.value_twd || 0;
+      const tot  = hVal + cVal;
+      if (tot > 0) {
+        const actPct  = hVal / tot * 100;
+        const tgtPct  = t.target * 100;
+        const driftAbs = Math.abs(actPct - tgtPct);
+        const gPct = t.gate_pct || 13;
+        const signalActive = signalStatus === '蓄力中 ⚡' || signalStatus === '過熱中 🔥';
+        const driftMet = driftAbs >= gPct;
+        if (signalActive && driftMet) {
+          signalStatus = '🎯 P-007 觸發'; signalColor = C.accent;
+          advice = `🎯 雙重確認！立即再平衡（偏離 ${driftAbs.toFixed(1)}%）`;
+        } else if (signalActive) {
+          advice = `⚡ 訊號成立，等偏離達 ${gPct}%（現偏離 ${driftAbs.toFixed(1)}%，差 ${(gPct-driftAbs).toFixed(1)}%）`;
+        } else if (driftMet) {
+          signalStatus = '偏離達標 📊'; signalColor = C.blue;
+          advice = `📊 偏離達標 ${driftAbs.toFixed(1)}%，等待 KDJ+布林訊號`;
+        } else {
+          advice = `等雙重確認｜偏離 ${driftAbs.toFixed(1)}% / gate ${gPct}%`;
+        }
       }
     }
 
@@ -553,7 +612,7 @@ function MonitorTab({ allAssets }) {
   const [loadingTicker, setLoadingTicker] = useState(""); // 顯示正在抓哪支
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal' });
+  const [form, setForm] = useState({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal', gate_pct:13 });
 
   async function loadTickers() {
     const { data } = await supabase.from("strategy_tickers").select("*").order("id");
@@ -586,7 +645,7 @@ function MonitorTab({ allAssets }) {
       await supabase.from("strategy_tickers").insert(form);
     }
     setShowAdd(false); setEditId(null);
-    setForm({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal' });
+    setForm({ ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, strategy_mode:'signal', gate_pct:13 });
     const list = await loadTickers();
     await loadKlines(list);
   }
@@ -598,7 +657,7 @@ function MonitorTab({ allAssets }) {
   }
 
   function handleEdit(t) {
-    setForm({ ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount, strategy_mode:t.strategy_mode||'signal' });
+    setForm({ ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount, strategy_mode:t.strategy_mode||'signal', gate_pct:t.gate_pct||13 });
     setEditId(t.id);
     setShowAdd(true);
   }
@@ -610,7 +669,7 @@ function MonitorTab({ allAssets }) {
           <div style={{fontWeight:700, fontSize:15, color:C.text}}>再平衡訊號監控</div>
           <div style={{color:C.textMuted, fontSize:12, marginTop:2}}>布林通道 (20,2) + KDJ (9,3,3)｜還原股價｜箭頭標記為訊號觸發點</div>
         </div>
-        <Btn onClick={()=>{ setShowAdd(!showAdd); setEditId(null); setForm({ticker:"",is_us:false,target:0.5,j_entry:10,j_exit:90,amount:0,strategy_mode:'signal'}); }}>
+        <Btn onClick={()=>{ setShowAdd(!showAdd); setEditId(null); setForm({ticker:"",is_us:false,target:0.5,j_entry:10,j_exit:90,amount:0,strategy_mode:'signal',gate_pct:13}); }}>
           {showAdd ? "✕ 取消" : "+ 新增股票"}
         </Btn>
       </div>
@@ -649,8 +708,15 @@ function MonitorTab({ allAssets }) {
                 style={{background:C.surface2, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:"7px 10px", fontSize:12, width:"100%"}}>
                 <option value="signal">原訊號再平衡（KDJ+布林）</option>
                 <option value="asymmetric">⚡ P-002 非對稱（KDJ買+偏移賣）</option>
+                <option value="p007">🔒 P-007 雙重確認（訊號＋偏離≥gate）</option>
               </select>
             </div>
+            {form.strategy_mode === 'p007' && (
+              <div>
+                <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>Gate 偏離門檻（%）</div>
+                <Input type="number" value={form.gate_pct} onChange={e=>setForm({...form, gate_pct:parseInt(e.target.value)||13})} style={{width:"100%"}} placeholder="預設 13（美股建議 13，台股建議 20）"/>
+              </div>
+            )}
             <div>
               <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>進場金額 (NT$)</div>
               <Input type="number" value={form.amount} onChange={e=>setForm({...form, amount:parseFloat(e.target.value)})} style={{width:"100%"}}/>
@@ -668,6 +734,7 @@ function MonitorTab({ allAssets }) {
               <span style={{color:C.textMuted, fontSize:11}}>{t.is_us?"美股":"台股"}</span>
               <span style={{color:C.textMuted, fontSize:11}}>J:{t.j_entry}/{t.j_exit}</span>
               {(t.strategy_mode||'signal')==='asymmetric' && <span style={{color:C.orange, fontSize:10, fontWeight:600}}>⚡非對稱</span>}
+              {(t.strategy_mode||'signal')==='p007' && <span style={{color:"#FFD700", fontSize:10, fontWeight:600}}>🔒雙重(gate={t.gate_pct||13}%)</span>}
               <button onClick={()=>handleEdit(t)} style={{background:"none", border:"none", color:C.blue, cursor:"pointer", fontSize:11, padding:"0 2px"}}>編輯</button>
               <button onClick={()=>handleDelete(t.id)} style={{background:"none", border:"none", color:C.red, cursor:"pointer", fontSize:11, padding:"0 2px"}}>✕</button>
             </div>
@@ -695,6 +762,7 @@ function MonitorTab({ allAssets }) {
               jExit={t.j_exit}
               strategyMode={t.strategy_mode||'signal'}
               driftPct={25}
+              gatePct={t.gate_pct||13}
             />
           ))}
         </>
