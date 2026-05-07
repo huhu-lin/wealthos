@@ -33,8 +33,15 @@ app.add_middleware(
 )
 
 # ── Supabase 快取 ────────────────────────────────────────────
+# 優先使用 SERVICE_KEY：kline_cache 表有 RLS，anon key 無寫入權限
+# 若 SERVICE_KEY 未設，退回 ANON_KEY（只能讀，寫入會靜默失敗）
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_KEY = (
+    os.environ.get("SUPABASE_SERVICE_KEY") or
+    os.environ.get("SUPABASE_ANON_KEY", "")
+)
+if not os.environ.get("SUPABASE_SERVICE_KEY"):
+    print("⚠️  SUPABASE_SERVICE_KEY 未設，kline_cache 寫入可能因 RLS 失敗")
 sb = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL else None
 
 CACHE_TABLE = "kline_cache"
@@ -112,24 +119,28 @@ def get_cache(ticker: str, days: int):
         print(f"[cache get] {e}")
     return None
 
-def set_cache(ticker: str, days: int, data: list):
+def set_cache(ticker: str, days: int, data: list) -> bool:
     """
     寫入 Supabase 快取。
     日期 key 使用台灣時區（UTC+8），與 get_cache 一致。
+    回傳 True=成功 / False=失敗（讓呼叫端可偵測）
     """
     if not sb:
-        return
+        return False
     try:
-        today = twn_today()   # ← 改用台灣時區日期
+        today = twn_today()   # ← 台灣時區日期
         sb.table(CACHE_TABLE).upsert({
             "ticker": ticker,
             "days": days,
             "cached_date": today,
             "data": json.dumps(data)
         }, on_conflict="ticker,days,cached_date").execute()
-        print(f"[cache set] {ticker} days={days} cached_date={today}")
+        print(f"[cache set ✅] {ticker} days={days} cached_date={today}")
+        return True
     except Exception as e:
-        print(f"[cache set] {e}")
+        # 不吞掉：印出完整錯誤讓 Render log 可見（anon key 無寫入權限時會顯示在這）
+        print(f"[cache set ❌] {ticker}: {e}")
+        return False
 
 # ── 台股 ticker 轉換 ─────────────────────────────────────────
 def tw_to_yf(ticker: str) -> str:
@@ -197,7 +208,9 @@ def kline_us(ticker: str = Query(...), days: int = Query(720)):
 
     data = fetch_kline(ticker.upper(), days)
     if data:
-        set_cache(ticker.upper(), days, data)
+        ok = set_cache(ticker.upper(), days, data)
+        if not ok:
+            print(f"[kline/us ⚠️] {ticker}: 資料已取得但快取寫入失敗（確認 SUPABASE_SERVICE_KEY）")
     return {"source": "yfinance", "ticker": ticker, "data": data}
 
 
@@ -216,7 +229,9 @@ def kline_tw(ticker: str = Query(...), days: int = Query(720)):
 
     data = fetch_kline(ticker_yf, days)
     if data:
-        set_cache(cache_key, days, data)
+        ok = set_cache(cache_key, days, data)
+        if not ok:
+            print(f"[kline/tw ⚠️] {ticker}: 資料已取得但快取寫入失敗（確認 SUPABASE_SERVICE_KEY）")
     return {"source": "yfinance", "ticker": ticker, "data": data}
 
 

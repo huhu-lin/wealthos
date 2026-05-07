@@ -60,7 +60,14 @@ export default function MarketBrief() {
     { label: "DXY",    val: brief?.dxy,         unit: "",  chg: null },
     { label: "S&P500", val: null, chg: brief?.sp500_chg },
     { label: "NASDAQ", val: null, chg: brief?.nasdaq_chg },
-    { label: "台股加權", val: null, chg: brief?.twii_chg },
+    // 台股加權：有點位時顯示「點位 + 漲跌%」，無點位（舊資料）退回只顯示漲跌%
+    {
+      label: "台股加權",
+      val:   brief?.twii_value ? Math.round(brief.twii_value).toLocaleString() : null,
+      unit:  "",
+      chg:   brief?.twii_chg,
+      hasValue: !!brief?.twii_value,  // 標記是否有實際點位
+    },
   ];
 
   if (loading) return (
@@ -88,22 +95,32 @@ export default function MarketBrief() {
         <>
           {/* ── 總經指標格（桌機6欄 / 手機3欄，由 .wos-grid-6-3 控制）── */}
           <div className="wos-grid-6-3" style={{ marginBottom: 12 }}>
-            {macros.map(({ label, val, unit, chg }) => (
+            {macros.map(({ label, val, unit, chg, hasValue }) => (
               <div key={label} style={{
                 background: C.surface2, borderRadius: 8, padding: "8px 6px",
                 textAlign: "center", border: `1px solid ${C.border}`,
               }}>
                 <div style={{ color: C.textMuted, fontSize: 10, marginBottom: 4 }}>{label}</div>
-                {val != null
-                  ? <div style={{ color: C.text, fontWeight: 700, fontSize: 13 }}>{val}{unit}</div>
-                  : chg != null
-                    ? <div style={{
-                        color: chg >= 0 ? C.accent : C.red,
-                        fontWeight: 700, fontSize: 13,
-                      }}>
-                        {chg >= 0 ? "+" : ""}{Number(chg).toFixed(2)}%
-                      </div>
-                    : <div style={{ color: C.textMuted, fontSize: 13 }}>—</div>
+                {val != null && hasValue
+                  // 台股加權：點位（大字）+ 漲跌%（小字）
+                  ? <>
+                      <div style={{ color: C.text, fontWeight: 700, fontSize: 13 }}>{val}{unit}</div>
+                      {chg != null && (
+                        <div style={{ color: chg >= 0 ? C.accent : C.red, fontSize: 10, marginTop: 2 }}>
+                          {chg >= 0 ? "+" : ""}{Number(chg).toFixed(2)}%
+                        </div>
+                      )}
+                    </>
+                  : val != null
+                    ? <div style={{ color: C.text, fontWeight: 700, fontSize: 13 }}>{val}{unit}</div>
+                    : chg != null
+                      ? <div style={{
+                          color: chg >= 0 ? C.accent : C.red,
+                          fontWeight: 700, fontSize: 13,
+                        }}>
+                          {chg >= 0 ? "+" : ""}{Number(chg).toFixed(2)}%
+                        </div>
+                      : <div style={{ color: C.textMuted, fontSize: 13 }}>—</div>
                 }
               </div>
             ))}

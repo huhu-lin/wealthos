@@ -9,9 +9,20 @@ import requests
 import json
 import os
 import sys
-from datetime import date
+from datetime import datetime, timezone, timedelta
 
 from supabase import create_client
+
+# ── 時區常數 ──────────────────────────────────────────────────
+TWN = timezone(timedelta(hours=8))  # UTC+8 台灣時區
+
+def twn_today() -> str:
+    """取得台灣時區今日日期（YYYY-MM-DD）
+    重要：GitHub Action 在 UTC 22:30 執行（= TWN 06:30 次日）
+    若用 date.today() 會拿到 UTC 日期（前一天），導致 brief_date 存錯
+    必須使用 TWN 時區確保日期與用戶看到的一致
+    """
+    return datetime.now(TWN).strftime("%Y-%m-%d")
 
 # ── 初始化 ────────────────────────────────────────────────────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -23,7 +34,8 @@ if not all([GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY]):
     sys.exit(1)
 
 sb    = create_client(SUPABASE_URL, SUPABASE_KEY)
-today = date.today().isoformat()
+today = twn_today()  # ✅ 台灣時區日期（修正 UTC 22:30 執行時日期差一天的問題）
+print(f"  台灣時間：{datetime.now(TWN).strftime('%Y-%m-%d %H:%M')} → brief_date={today}")
 
 # ── 防重複執行（手動觸發時跳過） ──────────────────────────────
 force = os.environ.get("FORCE_REGENERATE", "false").lower() == "true"
@@ -49,11 +61,14 @@ def get_macro():
             hist = yf.Ticker(sym).history(period="5d")  # 多抓幾天避免假日空資料
             hist = hist.dropna()
             if len(hist) >= 2:
-                curr = float(hist["Close"].iloc[-1])
-                prev = float(hist["Close"].iloc[-2])
-                chg  = (curr - prev) / prev * 100
+                curr      = float(hist["Close"].iloc[-1])
+                prev      = float(hist["Close"].iloc[-2])
+                chg       = (curr - prev) / prev * 100
+                # 記錄實際使用的日期，方便驗證 ^TWII 是否抓到正確日期
+                curr_date = hist.index[-1].strftime("%Y-%m-%d")
+                prev_date = hist.index[-2].strftime("%Y-%m-%d")
                 result[key] = {"value": round(curr, 2), "chg": round(chg, 2)}
-                print(f"  ✅ {key} ({sym}): {curr:.2f} ({chg:+.2f}%)")
+                print(f"  ✅ {key} ({sym}): {curr:.2f} ({chg:+.2f}%)  [{prev_date}→{curr_date}]")
             else:
                 print(f"  ⚠️  {key} ({sym}): 資料不足（{len(hist)} 筆）")
         except Exception as e:
@@ -198,6 +213,7 @@ sb.table("morning_brief").upsert({
     "sp500_chg":  sp500.get("chg"),
     "nasdaq_chg": nasdaq.get("chg"),
     "twii_chg":   twii.get("chg"),
+    "twii_value": twii.get("value"),   # ✅ 新增：台股加權實際點位（供前端顯示與驗證）
     "tw_news":    json.dumps(tw_news, ensure_ascii=False),
     "us_news":    json.dumps(us_news, ensure_ascii=False),
     "ai_summary": summary,
