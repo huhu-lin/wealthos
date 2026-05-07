@@ -41,7 +41,9 @@ jobs:
           echo "=== 台股 ETF 預載開始 ==="
           for t in "${TW_TICKERS[@]}"; do
             echo "→ 預載 $t ($DAYS 天)..."
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 \
+            # 0050（2003上市）與 0056（2007上市）歷史資料長，需較長 timeout
+            # 其他新 ETF 120s 綽綽有餘；統一改 300s 確保全部 ticker 不超時
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 300 \
               "$BASE/kline/tw?ticker=$t&days=$DAYS" || echo "timeout")
             echo "  $t → HTTP $STATUS"
             sleep 3

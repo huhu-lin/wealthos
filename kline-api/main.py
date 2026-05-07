@@ -4,7 +4,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
-import os, json
+import os, json, math
 
 # ── 時區常數 ─────────────────────────────────────────────────
 TWN = timezone(timedelta(hours=8))   # UTC+8 台灣時區
@@ -129,11 +129,12 @@ def set_cache(ticker: str, days: int, data: list) -> bool:
         return False
     try:
         today = twn_today()   # ← 台灣時區日期
+        data_json = json.dumps(data, allow_nan=False)   # NaN 殘留時明確 raise ValueError，不再靜默失敗
         sb.table(CACHE_TABLE).upsert({
             "ticker": ticker,
             "days": days,
             "cached_date": today,
-            "data": json.dumps(data)
+            "data": data_json
         }, on_conflict="ticker,days,cached_date").execute()
         print(f"[cache set ✅] {ticker} days={days} cached_date={today}")
         return True
@@ -187,6 +188,20 @@ def fetch_kline(ticker_yf: str, days: int) -> list:
                     print(f"[sanitize] 價格不連續 {result[i]['date']}: {prev}→{curr}，截取後段資料")
                     result = result[i:]
                     break
+
+        # NaN 二次清洗：移除任何 OHLC 含 NaN 的 row（老 ETF 如 0050 早期資料）
+        # df.dropna() 已處理大多數，但 float() 轉換後仍可能殘留 Python NaN。
+        # NaN 在 json.dumps 預設 allow_nan=True 下會輸出非標準 "NaN"，PostgREST 拒絕寫入。
+        # 過濾整列（而非替換 null）確保前端 calcKDJ / calcBB 不會收到 null 價格。
+        before = len(result)
+        result = [
+            row for row in result
+            if not any(isinstance(row[k], float) and math.isnan(row[k])
+                       for k in ('open', 'high', 'low', 'close'))
+        ]
+        removed = before - len(result)
+        if removed:
+            print(f"[sanitize] 移除 {removed} 筆 NaN row（老資料異常，不影響近期回測）")
 
         return result
     except Exception as e:
