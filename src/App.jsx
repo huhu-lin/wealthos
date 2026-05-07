@@ -30,13 +30,13 @@ import LoginPage     from "./components/LoginPage";
 // ── Tab 清單（id 對應路由、label 顯示名稱、icon 圖示）──────
 const TABS = [
   { id: "overview", label: "總覽", icon: "◎" },
+  { id: "strategy", label: "策略", icon: "📈" },  // C-006: 核心功能移至第二位
   { id: "tw",       label: "台股", icon: "🇹🇼" },
   { id: "us",       label: "美股", icon: "🇺🇸" },
   { id: "crypto",   label: "加密", icon: "₿" },
   { id: "other",    label: "其他", icon: "🏠" },
   { id: "liab",     label: "負債", icon: "📋" },
   { id: "pledge",   label: "質押", icon: "🔒" },
-  { id: "strategy", label: "策略", icon: "📈" },
 ];
 
 // ── RWD Hook（本地定義，避免跨模組依賴）────────────────────

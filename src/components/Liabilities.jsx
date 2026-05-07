@@ -85,6 +85,14 @@ export default function Liabilities({ liabilities, reload }) {
   };
 
   const today        = new Date().getDate(); // 今天幾號（用於扣款日預警）
+  // C-012: 計算距下次扣款日的天數（處理跨月情境）
+  // 例：今天29日，扣款日2日（下個月）→ daysUntilDue = 3，不漏警
+  const daysUntilDue = (dueDay) => {
+    if (dueDay === today) return 0;
+    if (dueDay > today) return dueDay - today;          // 本月還沒到
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    return daysInMonth - today + dueDay;                 // 跨月到下個月
+  };
   const total        = liabilities.reduce((s, l) => s + l.value,   0);
   const monthlyTotal = liabilities.reduce((s, l) => s + l.monthly, 0);
 
@@ -115,9 +123,9 @@ export default function Liabilities({ liabilities, reload }) {
           </div>
         </div>
       ) : liabilities.map(l => {
-        // 扣款日預警判斷
+        // 扣款日預警判斷（C-012: 使用 daysUntilDue 支援跨月計算）
         const isDueToday = l.due_day === today;
-        const isDueSoon  = Math.abs(l.due_day - today) <= 3 && l.due_day > today;
+        const isDueSoon  = !isDueToday && l.due_day > 0 && daysUntilDue(l.due_day) <= 3;
 
         return (
           <div key={l.id} className="wos-row" style={{
