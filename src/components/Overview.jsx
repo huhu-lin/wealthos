@@ -35,6 +35,9 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
   const winWidth = useWindowWidth();
   const isMobile = winWidth <= 480;
 
+  // ── 週/月/年歷史 Modal ──────────────────────────────────────
+  const [selectedPeriod, setSelectedPeriod] = useState(null); // null | 'week' | 'month' | 'year'
+
   // ── 資產 / 負債計算（useMemo 避免每次 render 重新計算）────────────────────
   const {
     twTotal, usTotal, cryptoTotal, otherTotal,
@@ -98,18 +101,69 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       return snap ? snap.net : null;
     };
     const periods = [
-      { label: "週結算", days: 7,   icon: "📅" },
-      { label: "月結算", days: 30,  icon: "📆" },
-      { label: "年結算", days: 365, icon: "🗓️" },
+      { label: "週結算", days: 7,   icon: "📅", type: "week"  },
+      { label: "月結算", days: 30,  icon: "📆", type: "month" },
+      { label: "年結算", days: 365, icon: "🗓️", type: "year"  },
     ];
-    return periods.map(({ label, days, icon }) => {
+    return periods.map(({ label, days, icon, type }) => {
       const pastNet = findNet(days);
-      if (!pastNet) return { label, icon, delta: null, pct: null };
+      if (!pastNet) return { label, icon, type, delta: null, pct: null };
       const delta = netWorth - pastNet;
       const pctChange = (delta / pastNet) * 100;
-      return { label, icon, delta, pct: pctChange };
+      return { label, icon, type, delta, pct: pctChange };
     });
   }, [snapshots, netWorth]);
+
+  // ── 週/月/年歷史結算資料 ────────────────────────────────────
+  const periodHistory = useMemo(() => {
+    if (!snapshots.length) return { week: [], month: [], year: [] };
+    // 升序排列
+    const sorted = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+
+    const weekMap = {}, monthMap = {}, yearMap = {};
+    sorted.forEach(s => {
+      // 週 key：找該日所在週的週一日期
+      const d = new Date(s.date + "T12:00:00");
+      const dow = d.getDay() === 0 ? 7 : d.getDay(); // 週一=1 … 週日=7
+      const mon = new Date(d);
+      mon.setDate(d.getDate() - dow + 1);
+      const weekKey = mon.toISOString().slice(0, 10);
+      const monthKey = s.date.slice(0, 7);
+      const yearKey  = s.date.slice(0, 4);
+
+      const update = (map, key) => {
+        if (!map[key]) map[key] = { first: s, last: s, key };
+        else map[key].last = s;
+      };
+      update(weekMap,  weekKey);
+      update(monthMap, monthKey);
+      update(yearMap,  yearKey);
+    });
+
+    const toResult = (map, labelFn) =>
+      Object.values(map)
+        .sort((a, b) => b.key.localeCompare(a.key)) // 最新在前
+        .map(({ first, last, key }) => {
+          const delta = last.net - first.net;
+          const pctChange = first.net > 0 ? (delta / first.net) * 100 : 0;
+          return {
+            key,
+            label:     labelFn(key, first.date, last.date),
+            delta,
+            pct:       pctChange,
+            startNet:  first.net,
+            endNet:    last.net,
+            startDate: first.date,
+            endDate:   last.date,
+          };
+        });
+
+    return {
+      week:  toResult(weekMap,  (_, s, e) => `${s.slice(5).replace("-", "/")} ~ ${e.slice(5).replace("-", "/")}`),
+      month: toResult(monthMap, (k) => { const [y, m] = k.split("-"); return `${y}年${parseInt(m)}月`; }),
+      year:  toResult(yearMap,  (k) => `${k}年`),
+    };
+  }, [snapshots]);
 
   // ── 圓餅圖資料（useMemo 保證穩定的物件參考）─────────────────────────
   const pieData = useMemo(() => [
@@ -122,6 +176,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
   const pieColors = [C.accent, C.blue, C.gold, C.purple];
 
   return (
+    <>
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
       {/* ── 每日市場摘要（盤前分析）── */}
@@ -192,19 +247,33 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       {/* ── 週 / 月 / 年 結算 ───────────────────────────── */}
       {periodReturns.length > 0 && periodReturns.some(r => r.delta !== null) && (
         <div className="wos-grid-3">
-          {periodReturns.map(({ label, icon, delta, pct: pctChange }) => {
+          {periodReturns.map(({ label, icon, type, delta, pct: pctChange }) => {
             const hasData = delta !== null;
             const isPos = hasData && delta >= 0;
             const color = !hasData ? C.textMuted : isPos ? C.accent : C.red;
+            const histLen = periodHistory[type]?.length ?? 0;
             return (
-              <div key={label} style={{
-                background: C.surface,
-                border: `1px solid ${C.border}`,
-                borderRadius: 12,
-                padding: "12px 14px",
-              }}>
-                <div style={{ color: C.textMuted, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600, marginBottom: 6 }}>
-                  {icon} {label}
+              <div
+                key={label}
+                onClick={() => histLen > 0 && setSelectedPeriod(type)}
+                style={{
+                  background: C.surface,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  cursor: histLen > 0 ? "pointer" : "default",
+                  transition: "border-color 0.15s",
+                }}
+                onMouseEnter={e => { if (histLen > 0) e.currentTarget.style.borderColor = C.accent; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div style={{ color: C.textMuted, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>
+                    {icon} {label}
+                  </div>
+                  {histLen > 0 && (
+                    <span style={{ color: C.accent, fontSize: 9, opacity: 0.7, marginTop: 1 }}>歷史 ›</span>
+                  )}
                 </div>
                 {hasData ? (
                   <>
@@ -328,6 +397,105 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
           </ResponsiveContainer>
         </Card>
       )}
+
     </div>
+
+      {/* ── 週/月/年歷史結算 Modal（在 wos-fade 外，避免 transform 破壞 fixed 定位）── */}
+      {selectedPeriod && (() => {
+        const rows = periodHistory[selectedPeriod] ?? [];
+        const titleMap = { week: "週結算歷史", month: "月結算歷史", year: "年結算歷史" };
+        return (
+          <div
+            onClick={() => setSelectedPeriod(null)}
+            style={{
+              position: "fixed", inset: 0,
+              background: "rgba(0,0,0,0.65)",
+              zIndex: 1000,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "0 16px",
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: "#0f1724",
+                border: `1px solid ${C.border}`,
+                borderRadius: 16,
+                width: "100%",
+                maxWidth: 520,
+                maxHeight: "70vh",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              {/* Modal 標題 */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "14px 18px",
+                borderBottom: `1px solid ${C.border}`,
+                flexShrink: 0,
+              }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: C.accent }}>
+                  📋 {titleMap[selectedPeriod]}
+                </div>
+                <button
+                  onClick={() => setSelectedPeriod(null)}
+                  style={{
+                    background: "none", border: "none", color: C.textMuted,
+                    fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 4px",
+                  }}
+                >×</button>
+              </div>
+
+              {/* 列表 */}
+              <div style={{ overflowY: "auto", padding: "10px 12px", flex: 1 }}>
+                {rows.length === 0 ? (
+                  <div style={{ color: C.textMuted, fontSize: 12, textAlign: "center", padding: 20 }}>
+                    資料不足，尚無歷史紀錄
+                  </div>
+                ) : (
+                  rows.map((r, i) => {
+                    const isPos = r.delta >= 0;
+                    const color = isPos ? C.accent : C.red;
+                    return (
+                      <div key={r.key} style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "10px 8px",
+                        borderBottom: i < rows.length - 1 ? `1px solid ${C.border}` : "none",
+                      }}>
+                        {/* 左：期間 */}
+                        <div>
+                          <div style={{ color: C.text, fontSize: 12, fontWeight: 600 }}>{r.label}</div>
+                          <div style={{ color: C.textMuted, fontSize: 10, marginTop: 2 }}>
+                            NT${fmtM(r.startNet)} → NT${fmtM(r.endNet)}
+                          </div>
+                        </div>
+                        {/* 右：損益 */}
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{
+                            color,
+                            fontFamily: "'JetBrains Mono', monospace",
+                            fontWeight: 700,
+                            fontSize: 13,
+                          }}>
+                            {isPos ? "+" : ""}NT${fmtM(Math.abs(r.delta))}
+                          </div>
+                          <div style={{ color, fontSize: 11, marginTop: 2 }}>
+                            {isPos ? "▲" : "▼"} {Math.abs(r.pct).toFixed(2)}%
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </>
   );
 }

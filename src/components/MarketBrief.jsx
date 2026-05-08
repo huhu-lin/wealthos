@@ -11,9 +11,12 @@ import { supabase }            from "../supabase";
 import { C }                   from "../constants/theme";
 import Card                    from "./ui/Card";
 
+const AI_PREVIEW_LEN = 60; // 預設顯示字數
+
 export default function MarketBrief() {
-  const [brief,   setBrief]   = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [brief,    setBrief]    = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [aiExpanded, setAiExpanded] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -127,20 +130,45 @@ export default function MarketBrief() {
           </div>
 
           {/* ── AI 摘要文字 ── */}
-          {brief.ai_summary ? (
-            <div style={{
-              background: C.surface2,
-              borderRadius: 8,
-              padding: "12px 14px",
-              fontSize: 12,
-              lineHeight: 1.9,
-              color: C.text,
-              borderLeft: `3px solid ${C.accent}`,
-            }}>
-              <span style={{ color: C.accent, fontWeight: 700, marginRight: 6 }}>🤖 AI 盤前分析</span>
-              {brief.ai_summary}
-            </div>
-          ) : (
+          {brief.ai_summary ? (() => {
+            const full    = brief.ai_summary;
+            const needCut = full.length > AI_PREVIEW_LEN;
+            const preview = needCut ? full.slice(0, AI_PREVIEW_LEN) : full;
+            return (
+              <div style={{
+                background: C.surface2,
+                borderRadius: 8,
+                padding: "12px 14px",
+                fontSize: 12,
+                lineHeight: 1.9,
+                color: C.text,
+                borderLeft: `3px solid ${C.accent}`,
+              }}>
+                <span style={{ color: C.accent, fontWeight: 700, marginRight: 6 }}>🤖 AI 盤前分析</span>
+                {aiExpanded ? full : preview}
+                {needCut && !aiExpanded && <span style={{ color: C.textMuted }}>…</span>}
+                {needCut && (
+                  <button
+                    onClick={() => setAiExpanded(v => !v)}
+                    style={{
+                      display: "block",
+                      marginTop: 8,
+                      background: "none",
+                      border: "none",
+                      color: C.accent,
+                      fontSize: 11,
+                      cursor: "pointer",
+                      padding: 0,
+                      fontWeight: 600,
+                      letterSpacing: "0.03em",
+                    }}
+                  >
+                    {aiExpanded ? "收起 ▴" : "展開閱讀全部 ▾"}
+                  </button>
+                )}
+              </div>
+            );
+          })() : (
             <div style={{
               background: C.surface2, borderRadius: 8, padding: "10px 14px",
               fontSize: 11, color: C.textMuted, textAlign: "center",
