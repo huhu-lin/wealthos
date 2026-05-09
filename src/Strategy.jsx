@@ -475,6 +475,12 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
   const lastKDJ = kdj[kdj.length-1];
   const lastClose = closes[closes.length-1];
 
+  // ── 兩步驟訊號集合（用於 P-007 signalActive 判斷，對齊 checkSignals 邏輯）
+  const _signals  = checkSignals(closes, bb, kdj, jEntry, jExit, strategyMode);
+  const _buySigs  = new Set(_signals.filter(s => s.type === 'BUY').map(s => s.index));
+  const _sellSigs = new Set(_signals.filter(s => s.type === 'SELL').map(s => s.index));
+  const _lastIdx  = closes.length - 1;
+
   let status = '正常', statusColor = C.textMuted;
   if (lastBB && lastKDJ) {
     if (lastClose < lastBB.lower && lastKDJ.j < jEntry) { status='蓄力中 ⚡'; statusColor=C.accent; }
@@ -516,7 +522,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
 
         // ── P-007 雙重確認：訊號 + 偏離同時達標才觸發 ──
         if (strategyMode === 'p007') {
-          const signalActive = status === '蓄力中 ⚡' || status === '過熱中 🔥';
+          const signalActive = _buySigs.has(_lastIdx) || _sellSigs.has(_lastIdx);
           const driftMet = driftNow >= gatePct;
           const bothMet  = signalActive && driftMet;
           const borderCol = bothMet ? C.accent+"60" : (signalActive || driftMet) ? "#FFD70060" : C.border;
@@ -530,30 +536,59 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
               {bothMet ? (
                 <span style={{color:C.accent, fontWeight:700}}>🎯 P-007 觸發！<span style={{color:diffAmt>0?C.accent:C.red}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
               ) : signalActive ? (
-                <span style={{color:"#FFD700"}}>⚡ 訊號成立，等偏離再差 {gapDrift.toFixed(1)}%</span>
+                <span style={{color:C.red}}>⚠️ 今日訊號成立，但偏離僅 {driftNow.toFixed(1)}%（未達 gate {gatePct}%），本次訊號失效</span>
               ) : driftMet ? (
-                <span style={{color:C.blue}}>📊 偏離達標，等KDJ+布林訊號</span>
+                <span style={{color:C.blue}}>📊 偏離達標，等待訊號</span>
               ) : (
-                <span style={{color:C.textMuted}}>等雙重確認</span>
+                <span style={{color:C.textMuted}}>等雙重確認｜偏離 {driftNow.toFixed(1)}% / gate {gatePct}%</span>
               )}
             </div>
           );
         }
 
-        // ── 原有邏輯（signal / asymmetric 模式）──
+        // ── signal 模式：純 KDJ+布林兩步驟訊號觸發 ──
+        if (strategyMode === 'signal') {
+          const sigFired = _buySigs.has(_lastIdx) || _sellSigs.has(_lastIdx);
+          return (
+            <div style={{display:"flex", gap:12, flexWrap:"wrap", marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${sigFired ? C.accent+"60" : C.border}`, fontSize:12}}>
+              <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
+              <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
+              <span style={{color:C.textMuted}}>訊號 <span style={{color:sigFired?C.accent:C.textMuted, fontWeight:600}}>{sigFired?'✅ 成立':'⏳ 等待'}</span></span>
+              {sigFired
+                ? <span style={{color:C.accent, fontWeight:700}}>📈 訊號再平衡！<span style={{color:diffAmt>0?C.accent:C.red}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
+                : <span style={{color:C.textMuted}}>等待 KDJ+布林兩步驟確認（過閾值→回歸）</span>}
+            </div>
+          );
+        }
+
+        // ── asymmetric（P-002）：買入靠 KDJ 訊號，賣出靠偏移 ──
+        if (strategyMode === 'asymmetric') {
+          const buySignal  = _buySigs.has(_lastIdx);
+          const sellDrift  = driftNow >= driftPct && actualPct > targetPct;
+          const doRebal    = buySignal || sellDrift;
+          return (
+            <div style={{display:"flex", gap:12, flexWrap:"wrap", marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${doRebal ? C.accent+"60" : C.border}`, fontSize:12}}>
+              <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
+              <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
+              <span style={{color:C.textMuted}}>買入訊號 <span style={{color:buySignal?C.accent:C.textMuted, fontWeight:600}}>{buySignal?'✅':'⏳'}</span></span>
+              <span style={{color:C.textMuted}}>賣出偏離 <span style={{color:sellDrift?"#9B6DFF":C.textMuted, fontWeight:600}}>{driftNow.toFixed(1)}% / {driftPct}%</span></span>
+              {doRebal
+                ? <span style={{color:C.accent, fontWeight:700}}>⚡ 再平衡！<span style={{color:diffAmt>0?C.accent:C.red}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
+                : <span style={{color:C.textMuted}}>等觸發條件</span>}
+            </div>
+          );
+        }
+
+        // ── drift 模式（及其他 fallback）：純偏移觸發 ──
         const needsRebal = driftNow >= driftPct;
         const gapToTrigger = driftPct - driftNow;
         return (
           <div style={{display:"flex", gap:16, marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${needsRebal ? C.red+"60" : C.border}`, fontSize:12}}>
             <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
             <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
-            {needsRebal ? (
-              // 偏離達閾值：顯示具體操作建議
-              <span style={{color:C.textMuted}}>⚡ 建議再平衡<span style={{color:diffAmt>0?C.accent:C.red, fontWeight:700}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
-            ) : (
-              // 偏離未達閾值：僅顯示距觸發差距，不建議操作
-              <span style={{color:C.textMuted}}>偏離 <span style={{color:C.textMuted, fontWeight:600}}>{driftNow.toFixed(1)}%</span>｜距觸發差 <span style={{color:C.gold, fontWeight:600}}>{gapToTrigger.toFixed(1)}%</span>（閾值 {driftPct}%）</span>
-            )}
+            {needsRebal
+              ? <span style={{color:C.textMuted}}>⚡ 建議再平衡<span style={{color:diffAmt>0?C.accent:C.red, fontWeight:700}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
+              : <span style={{color:C.textMuted}}>偏離 <span style={{fontWeight:600}}>{driftNow.toFixed(1)}%</span>｜距觸發差 <span style={{color:C.gold, fontWeight:600}}>{gapToTrigger.toFixed(1)}%</span>（閾值 {driftPct}%）</span>}
           </div>
         );
       })()}
@@ -660,6 +695,11 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
     const lows   = data.map(d => d.low);
     const bb  = calcBB(closes);
     const kdj = calcKDJ(closes, highs, lows);
+    // 兩步驟訊號集合（P-007 signalActive 與 signal mode advice 使用）
+    const _sigs     = checkSignals(closes, bb, kdj, t.j_entry, t.j_exit, t.strategy_mode || 'signal');
+    const _buySigs  = new Set(_sigs.filter(s => s.type === 'BUY').map(s => s.index));
+    const _sellSigs = new Set(_sigs.filter(s => s.type === 'SELL').map(s => s.index));
+    const _lastIdx  = closes.length - 1;
 
     const lastBB    = bb[bb.length - 1];
     const lastKDJ   = kdj[kdj.length - 1];
@@ -700,16 +740,16 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
         const tgtPct  = t.target * 100;
         const driftAbs = Math.abs(actPct - tgtPct);
         const gPct = t.gate_pct || 13;
-        const signalActive = signalStatus === '蓄力中 ⚡' || signalStatus === '過熱中 🔥';
+        const signalActive = _buySigs.has(_lastIdx) || _sellSigs.has(_lastIdx);
         const driftMet = driftAbs >= gPct;
         if (signalActive && driftMet) {
           signalStatus = '🎯 P-007 觸發'; signalColor = C.accent;
           advice = `🎯 雙重確認！立即再平衡（偏離 ${driftAbs.toFixed(1)}%）`;
         } else if (signalActive) {
-          advice = `⚡ 訊號成立，等偏離達 ${gPct}%（現偏離 ${driftAbs.toFixed(1)}%，差 ${(gPct-driftAbs).toFixed(1)}%）`;
+          advice = `⚠️ 今日訊號成立，但偏離僅 ${driftAbs.toFixed(1)}%（未達 gate ${gPct}%），本次訊號失效`;
         } else if (driftMet) {
           signalStatus = '偏離達標 📊'; signalColor = C.blue;
-          advice = `📊 偏離達標 ${driftAbs.toFixed(1)}%，等待 KDJ+布林訊號`;
+          advice = `📊 偏離達標，等待訊號`;
         } else {
           advice = `等雙重確認｜偏離 ${driftAbs.toFixed(1)}% / gate ${gPct}%`;
         }
