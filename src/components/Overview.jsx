@@ -489,7 +489,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
                         <div>
                           <div style={{ color: C.text, fontSize: 12, fontWeight: 600 }}>{r.label}</div>
                           <div style={{ color: C.textMuted, fontSize: 10, marginTop: 2 }}>
-                            NT${fmtM(r.startNet)} → NT${fmtM(r.endNet)}
+                            NT${fmt(r.startNet)} → NT${fmt(r.endNet)}
                           </div>
                         </div>
                         {/* 右：損益 */}
