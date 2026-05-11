@@ -103,11 +103,15 @@ def generate_summary(macro, tw_news, us_news):
     tw_titles = "\n".join([f"- {n['title']}" for n in tw_news[:4]])
     us_titles = "\n".join([f"- {n['title']}" for n in us_news[:3]])
 
+    # 週一的「昨日」實為上週五（週末不開市），需正確標示讓 AI 用對時間詞
+    import datetime
+    last_td = "上週五" if datetime.datetime.now().weekday() == 0 else "昨日"
+
     prompt = f"""你是一位台灣資深財經分析師，請根據以下數據，用繁體中文撰寫約150字的今日開盤前重點摘要。
 語氣專業簡潔，重點放在對台股今日走勢的影響研判。直接輸出摘要，不需標題或條列。
 【注意】只分析市場環境因素，不得建議具體買賣操作或推薦特定投資標的。
 
-【昨日美股收盤】
+【{last_td}美股收盤】
 - S&P500：{fmt(sp500)}
 - NASDAQ：{fmt(nasdaq)}
 - 台股加權指數：{fmt(twii)}
@@ -120,7 +124,7 @@ def generate_summary(macro, tw_news, us_news):
 【今日台股重點新聞】
 {tw_titles}
 
-【昨日美股重點新聞】
+【{last_td}美股重點新聞】
 {us_titles}"""
 
     # 依序嘗試不同模型（從 /v1beta/models 確認可用清單）
