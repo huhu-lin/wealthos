@@ -91,22 +91,31 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
   // ── 週 / 月 / 年 結算計算 ───────────────────────────────────────────
   const periodReturns = useMemo(() => {
     if (!snapshots.length) return [];
-    // snapshots 降序（最新在前），找距今最近 N 天的快照
+    // snapshots 降序（最新在前），找距今最近 N 天的快照（月/年用）
     const findNet = (days) => {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
       const target = cutoff.toISOString().slice(0, 10);
-      // 找第一筆日期 <= target 的快照（即最接近 N 天前的那天）
-      const snap = snapshots.find(s => s.date <= target);
-      return snap ? snap.net : null;
+      return snapshots.find(s => s.date <= target)?.net ?? null;
+    };
+    // 週結算：以本週一前一天（上週末）最近快照為基準
+    // 避免「今天是週一但 7 天前恰好無快照」跨越兩週造成誤算
+    const findWeekStartNet = () => {
+      const d = new Date();
+      const dow = d.getDay() === 0 ? 7 : d.getDay(); // 週一=1…週日=7
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - dow + 1);
+      const prevDay = new Date(monday);
+      prevDay.setDate(monday.getDate() - 1); // 上週日
+      const target = prevDay.toISOString().slice(0, 10);
+      return snapshots.find(s => s.date <= target)?.net ?? null;
     };
     const periods = [
-      { label: "週結算", days: 7,   icon: "📅", type: "week"  },
-      { label: "月結算", days: 30,  icon: "📆", type: "month" },
-      { label: "年結算", days: 365, icon: "🗓️", type: "year"  },
+      { label: "週結算", icon: "📅", type: "week",  pastNet: findWeekStartNet() },
+      { label: "月結算", icon: "📆", type: "month", pastNet: findNet(30) },
+      { label: "年結算", icon: "🗓️", type: "year",  pastNet: findNet(365) },
     ];
-    return periods.map(({ label, days, icon, type }) => {
-      const pastNet = findNet(days);
+    return periods.map(({ label, icon, type, pastNet }) => {
       if (!pastNet) return { label, icon, type, delta: null, pct: null };
       const delta = netWorth - pastNet;
       const pctChange = (delta / pastNet) * 100;
