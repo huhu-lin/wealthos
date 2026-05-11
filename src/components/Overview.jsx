@@ -91,15 +91,15 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
   // ── 週 / 月 / 年 結算計算 ───────────────────────────────────────────
   const periodReturns = useMemo(() => {
     if (!snapshots.length) return [];
-    // snapshots 降序（最新在前），找距今最近 N 天的快照（月/年用）
+    // snapshots 升序（最舊在前），用 filter().at(-1) 取「目標日期前最近一筆」
+    const findNetByTarget = (target) =>
+      snapshots.filter(s => s.date <= target).at(-1)?.net ?? null;
     const findNet = (days) => {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - days);
-      const target = cutoff.toISOString().slice(0, 10);
-      return snapshots.find(s => s.date <= target)?.net ?? null;
+      return findNetByTarget(cutoff.toISOString().slice(0, 10));
     };
     // 週結算：以本週一前一天（上週末）最近快照為基準
-    // 避免「今天是週一但 7 天前恰好無快照」跨越兩週造成誤算
     const findWeekStartNet = () => {
       const d = new Date();
       const dow = d.getDay() === 0 ? 7 : d.getDay(); // 週一=1…週日=7
@@ -107,8 +107,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       monday.setDate(d.getDate() - dow + 1);
       const prevDay = new Date(monday);
       prevDay.setDate(monday.getDate() - 1); // 上週日
-      const target = prevDay.toISOString().slice(0, 10);
-      return snapshots.find(s => s.date <= target)?.net ?? null;
+      return findNetByTarget(prevDay.toISOString().slice(0, 10));
     };
     const periods = [
       { label: "週結算", icon: "📅", type: "week",  pastNet: findWeekStartNet() },
