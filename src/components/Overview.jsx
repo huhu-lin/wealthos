@@ -166,8 +166,19 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
           };
         });
 
+    const weekResults = toResult(weekMap, (_, s, e) => `${s.slice(5).replace("-", "/")} ~ ${e.slice(5).replace("-", "/")}`);
+    // 當週起點改為上週最後一筆快照，確保與卡片計算一致
+    if (weekResults.length > 0) {
+      const currentMondayKey = weekResults[0].key;
+      const prevSnap = sorted.filter(s => s.date < currentMondayKey).at(-1);
+      if (prevSnap) {
+        const trueDelta = weekResults[0].endNet - prevSnap.net;
+        const truePct = prevSnap.net > 0 ? (trueDelta / prevSnap.net) * 100 : 0;
+        weekResults[0] = { ...weekResults[0], startNet: prevSnap.net, delta: trueDelta, pct: truePct };
+      }
+    }
     return {
-      week:  toResult(weekMap,  (_, s, e) => `${s.slice(5).replace("-", "/")} ~ ${e.slice(5).replace("-", "/")}`),
+      week:  weekResults,
       month: toResult(monthMap, (k) => { const [y, m] = k.split("-"); return `${y}年${parseInt(m)}月`; }),
       year:  toResult(yearMap,  (k) => `${k}年`),
     };
@@ -286,7 +297,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
                 {hasData ? (
                   <>
                     <div style={{ color, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>
-                      {isPos ? "+" : ""}NT${fmtM(Math.abs(delta))}
+                      {isPos ? "+" : ""}NT${fmt(Math.abs(delta))}
                     </div>
                     <div style={{ color, fontSize: 11, marginTop: 3, fontWeight: 600 }}>
                       {isPos ? "▲" : "▼"} {Math.abs(pctChange).toFixed(2)}%
@@ -489,7 +500,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
                             fontWeight: 700,
                             fontSize: 13,
                           }}>
-                            {isPos ? "+" : ""}NT${fmtM(Math.abs(r.delta))}
+                            {isPos ? "+" : ""}NT${fmt(Math.abs(r.delta))}
                           </div>
                           <div style={{ color, fontSize: 11, marginTop: 2 }}>
                             {isPos ? "▲" : "▼"} {Math.abs(r.pct).toFixed(2)}%
