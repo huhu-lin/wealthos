@@ -55,10 +55,14 @@ def get_macro():
         "nasdaq": "^IXIC",
         "twii":   "^TWII",
     }
+    # 以台灣時區為基準計算日期範圍，避免 UTC 與 TWN 日期差一天造成 TWII 抓到上週五
+    twn_today_dt = datetime.now(TWN).date()
+    hist_start   = str(twn_today_dt - timedelta(days=10))  # 多抓 10 天涵蓋假日
+    hist_end     = str(twn_today_dt + timedelta(days=1))   # exclusive，含今日前所有資料
     result = {}
     for key, sym in symbols.items():
         try:
-            hist = yf.Ticker(sym).history(period="5d")  # 多抓幾天避免假日空資料
+            hist = yf.Ticker(sym).history(start=hist_start, end=hist_end)
             hist = hist.dropna()
             if len(hist) >= 2:
                 curr      = float(hist["Close"].iloc[-1])
@@ -104,8 +108,8 @@ def generate_summary(macro, tw_news, us_news):
     us_titles = "\n".join([f"- {n['title']}" for n in us_news[:3]])
 
     # 週一的「昨日」實為上週五（週末不開市），需正確標示讓 AI 用對時間詞
-    import datetime
-    last_td = "上週五" if datetime.datetime.now().weekday() == 0 else "昨日"
+    # 使用台灣時區判斷（腳本在 UTC 22:30 執行 = TWN 06:30，UTC weekday 比 TWN 少一天）
+    last_td = "上週五" if datetime.now(TWN).weekday() == 0 else "昨日"
 
     prompt = f"""你是一位台灣資深財經分析師，請根據以下數據，用繁體中文撰寫約150字的今日開盤前重點摘要。
 語氣專業簡潔，重點放在對台股今日走勢的影響研判。直接輸出摘要，不需標題或條列。
