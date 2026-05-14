@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 const KLINE_API = process.env.KLINE_API_URL || "https://wealthos-kline.onrender.com";
@@ -193,6 +193,11 @@ async function sendTelegram(msg) {
 
 // ─── 主 Handler ──────────────────────────────────────────────
 export default async function handler(req) {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   const { data: strategyTickers } = await supabase.from('strategy_tickers').select('*');
   if (!strategyTickers?.length) {
     console.log('[signal-check] 沒有策略設定，結束');
