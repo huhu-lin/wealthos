@@ -148,39 +148,40 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       update(yearMap,  yearKey);
     });
 
-    const toResult = (map, labelFn) =>
-      Object.values(map)
-        .sort((a, b) => b.key.localeCompare(a.key)) // 最新在前
+    // 每個週期的起點 = 前一個週期最後一筆 snapshot，確保所有區間首尾相連
+    const toResult = (map, labelFn, periodStartFn) => {
+      const entries = Object.values(map).sort((a, b) => a.key.localeCompare(b.key)); // 升序
+      return entries
         .map(({ first, last, key }) => {
-          const delta = last.net - first.net;
-          const pctChange = first.net > 0 ? (delta / first.net) * 100 : 0;
+          // 找「此週期開始日之前」最近一筆 snapshot 作為基準起點
+          const periodStart = periodStartFn(key);
+          const prevSnap = sorted.filter(s => s.date < periodStart).at(-1);
+          const startSnap = prevSnap ?? first; // 若找不到前一筆（最早那期），退回自身第一筆
+          const delta = last.net - startSnap.net;
+          const pctChange = startSnap.net > 0 ? (delta / startSnap.net) * 100 : 0;
           return {
             key,
             label:     labelFn(key, first.date, last.date),
             delta,
             pct:       pctChange,
-            startNet:  first.net,
+            startNet:  startSnap.net,
             endNet:    last.net,
-            startDate: first.date,
+            startDate: startSnap.date,
             endDate:   last.date,
           };
-        });
+        })
+        .sort((a, b) => b.key.localeCompare(a.key)); // 最新在前
+    };
 
-    const weekResults = toResult(weekMap, (_, s, e) => `${s.slice(5).replace("-", "/")} ~ ${e.slice(5).replace("-", "/")}`);
-    // 當週起點改為上週最後一筆快照，確保與卡片計算一致
-    if (weekResults.length > 0) {
-      const currentMondayKey = weekResults[0].key;
-      const prevSnap = sorted.filter(s => s.date < currentMondayKey).at(-1);
-      if (prevSnap) {
-        const trueDelta = weekResults[0].endNet - prevSnap.net;
-        const truePct = prevSnap.net > 0 ? (trueDelta / prevSnap.net) * 100 : 0;
-        weekResults[0] = { ...weekResults[0], startNet: prevSnap.net, delta: trueDelta, pct: truePct };
-      }
-    }
+    // 週期開始日推算函式（各週期第一天，用來往前找 prevSnap）
+    const weekStart  = (key) => key; // weekKey 本身就是週一
+    const monthStart = (key) => key + "-01";
+    const yearStart  = (key) => key + "-01-01";
+
     return {
-      week:  weekResults,
-      month: toResult(monthMap, (k) => { const [y, m] = k.split("-"); return `${y}年${parseInt(m)}月`; }),
-      year:  toResult(yearMap,  (k) => `${k}年`),
+      week:  toResult(weekMap,  (_, s, e) => `${s.slice(5).replace("-", "/")} ~ ${e.slice(5).replace("-", "/")}`, weekStart),
+      month: toResult(monthMap, (k) => { const [y, m] = k.split("-"); return `${y}年${parseInt(m)}月`; }, monthStart),
+      year:  toResult(yearMap,  (k) => `${k}年`, yearStart),
     };
   }, [snapshots]);
 
