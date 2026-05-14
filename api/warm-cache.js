@@ -2,12 +2,17 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 const KLINE_API = process.env.KLINE_API_URL || "https://wealthos-kline.onrender.com";
 
 export default async function handler(req) {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   console.log('[warm-cache] 開始預熱 K 線快取...');
 
   // 讀取所有監控中的股票

@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const FINMIND_TOKEN = "REDACTED_FINMIND_TOKEN";
+const FINMIND_TOKEN = Deno.env.get("FINMIND_TOKEN");
+if (!FINMIND_TOKEN) throw new Error("FINMIND_TOKEN not configured");
 
 async function fetchTWPrice(ticker: string) {
   try {
