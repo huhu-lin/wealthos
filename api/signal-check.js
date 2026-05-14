@@ -202,6 +202,14 @@ export default async function handler(req) {
     return new Response('ok', { status: 200 });
   }
 
+  // 預熱 Render：等 /health 回應後再抓 K 線，避免冷啟動導致空資料
+  try {
+    await fetch(`${KLINE_API}/health`, { signal: AbortSignal.timeout(10000) });
+    console.log('[signal-check] Render 已預熱');
+  } catch(e) {
+    console.warn('[signal-check] Render 預熱失敗，繼續嘗試:', e.message);
+  }
+
   // 並行：Supabase assets、匯率、K線同時抓
   const [{ data: rawAssets }, usdtwd, klineResults] = await Promise.all([
     supabase.from('assets').select('*'),
