@@ -155,7 +155,8 @@ def tw_to_yf(ticker: str) -> str:
 # ── K 線抓取核心 ─────────────────────────────────────────────
 def fetch_kline(ticker_yf: str, days: int) -> list:
     """用 yfinance 抓還原股價（auto_adjust=True 預設還原）"""
-    end = datetime.utcnow()
+    # yfinance end 參數為 exclusive（不含該日），+1 天確保當日資料被包含
+    end = datetime.utcnow() + timedelta(days=1)
     start = end - timedelta(days=days + 10)   # 多抓幾天避免假日缺口
     try:
         df = yf.download(
