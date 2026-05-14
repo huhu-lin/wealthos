@@ -18,6 +18,9 @@ dist
 dist-ssr
 *.local
 
+# Personal reports — kept locally, not committed
+*_REPORT.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
