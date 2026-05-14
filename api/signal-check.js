@@ -157,10 +157,9 @@ function checkSignal(data, strategyMode='signal', jThresholdEntry=10, jThreshold
 const US_TICKERS = ['QLD','VT'];
 
 async function calcLiveValues(assets, usdtwd) {
-  const result = [];
-  for (const a of assets) {
-    let valueTwd = 0;
+  return Promise.all(assets.map(async (a) => {
     const shares = a.shares ?? 0;
+    let valueTwd = 0;
     if (a.type === 'cash') {
       valueTwd = a.value_usd && a.value_usd > 0
         ? a.value_usd * usdtwd
@@ -172,9 +171,8 @@ async function calcLiveValues(assets, usdtwd) {
       const price = await fetchLatestPriceTW(a.ticker || a.name);
       valueTwd = shares * price;
     }
-    result.push({ ...a, value_twd: valueTwd });
-  }
-  return result;
+    return { ...a, value_twd: valueTwd };
+  }));
 }
 
 // ─── Telegram 推播 ───────────────────────────────────────────
@@ -204,24 +202,31 @@ export default async function handler(req) {
     return new Response('ok', { status: 200 });
   }
 
-  const { data: rawAssets } = await supabase.from('assets').select('*');
-  const usdtwd = await fetchUSDTWD();
+  // 並行：Supabase assets、匯率、K線同時抓
+  const [{ data: rawAssets }, usdtwd, klineResults] = await Promise.all([
+    supabase.from('assets').select('*'),
+    fetchUSDTWD(),
+    Promise.all(strategyTickers.map(st => fetchKline(st.ticker, st.is_us))),
+  ]);
+
   const assets = await calcLiveValues(rawAssets ?? [], usdtwd);
   const total  = assets.reduce((s,x)=>s+(x.value_twd||0),0);
   console.log(`[signal-check] 即時總資產 NT$${Math.round(total)}, 資產筆數 ${assets.length}`);
 
-  for (const st of strategyTickers) {
+  // 組合訊號並行結果，收集需要發送的訊息
+  const messages = [];
+  for (let i = 0; i < strategyTickers.length; i++) {
+    const st = strategyTickers[i];
     const {
       ticker,
       is_us: isUS,
       target,
       j_entry: jEntry,
       j_exit:  jExit,
-      strategy_mode: strategyMode = 'signal',  // ✅ 新增：讀取策略模式
+      strategy_mode: strategyMode = 'signal',
     } = st;
 
-    // 取完整 OHLCV（供正確 KDJ 計算）
-    const klineData = await fetchKline(ticker, isUS);
+    const klineData = klineResults[i];
     if (!klineData.length) {
       console.warn(`[${ticker}] 無 K 線資料，跳過`);
       continue;
@@ -253,12 +258,11 @@ export default async function handler(req) {
     const diffAmt   = poolTotal > 0
       ? Math.round((target - holdingValue/poolTotal) * poolTotal) : '-';
 
-    // 策略標籤（讓用戶知道哪個策略觸發）
     const strategyLabel = strategyMode === 'asymmetric'
       ? '⚡ P002 KDJ買+偏移賣（此為買入訊號）'
       : '📐 訊號再平衡（KDJ+布林雙確認）';
 
-    const msg = [
+    messages.push([
       '🔔 <b>WealthOS 再平衡通知</b>',
       '',
       `<b>${ticker}</b> ${signalText}`,
@@ -273,10 +277,13 @@ export default async function handler(req) {
       `建議調整：NT$${diffAmt > 0 ? '+' : ''}${diffAmt}`,
       '',
       '<i>資料來源：yfinance 還原股價</i>',
-    ].join('\n');
+    ].join('\n'));
+  }
 
-    console.log(`[${ticker}] 發送 Telegram...`);
-    await sendTelegram(msg);
+  // 並行發送所有 Telegram 訊息
+  if (messages.length > 0) {
+    console.log(`[signal-check] 發送 ${messages.length} 則 Telegram 通知...`);
+    await Promise.all(messages.map(msg => sendTelegram(msg)));
   }
 
   return new Response('ok', { status: 200 });
