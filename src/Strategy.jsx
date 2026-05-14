@@ -150,21 +150,24 @@ function filterByDays(data, days) {
   return data.filter(d => d.date >= cutoffStr);
 }
 
-// 從 FinMind 補今日台股 OHLCV（yfinance 有延遲時使用）
-async function fetchTodayTWCandle(ticker) {
+// 從 FinMind 補台股缺漏的 OHLCV（afterDate 的隔天到 upToDate）
+// 用於快取少了昨天或更多天時，一次撈回所有缺漏 K 棒（最多 3 天 gap 防止過度請求）
+async function fetchMissingTWCandles(ticker, afterDate, upToDate) {
   try {
-    const today = new Date().toISOString().slice(0, 10);
-    const url = `/api/finmind-price?dataset=TaiwanStockPrice&data_id=${encodeURIComponent(ticker)}&start=${today}&end=${today}`;
+    const after = new Date(afterDate + 'T00:00:00Z');
+    after.setUTCDate(after.getUTCDate() + 1);
+    const start = after.toISOString().slice(0, 10);
+    if (start > upToDate) return [];
+    const url = `/api/finmind-price?dataset=TaiwanStockPrice&data_id=${encodeURIComponent(ticker)}&start=${start}&end=${upToDate}`;
     const res = await fetch(url);
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const json = await res.json();
-    if (!json.data?.length) return null;
-    const d = json.data[json.data.length - 1];
-    // FinMind 欄位：max=最高, min=最低
-    if (!d.close) return null;
-    return { date: d.date, open: d.open, high: d.max, low: d.min, close: d.close };
+    if (!json.data?.length) return [];
+    return json.data
+      .filter(d => d.close)
+      .map(d => ({ date: d.date, open: d.open, high: d.max, low: d.min, close: d.close }));
   } catch(e) {
-    return null;
+    return [];
   }
 }
 
@@ -189,13 +192,17 @@ async function fetchTWKline(ticker, days=720, bypassCache=false) {
     }
   }
 
-  // ── 補今日K棒（無論來自快取或 Render，都嘗試補當日即時 K 棒）──
-  // yfinance 收盤後有延遲，FinMind 可提供台股當日 OHLCV
-  const today = new Date().toISOString().slice(0, 10);
+  // ── 補缺漏 K 棒（快取或 Render 可能因 yfinance end exclusive 少了近期幾天）──
+  // fetchMissingTWCandles 從 FinMind 一次補齊 lastDate 到今天之間所有缺漏日期
+  const todayUTC = new Date().toISOString().slice(0, 10);
   const lastDate = result.length > 0 ? result[result.length - 1].date : null;
-  if (lastDate !== today) {
-    const todayCandle = await fetchTodayTWCandle(ticker);
-    if (todayCandle) result = [...result, todayCandle];
+  if (lastDate && lastDate < todayUTC) {
+    const missing = await fetchMissingTWCandles(ticker, lastDate, todayUTC);
+    if (missing.length > 0) {
+      const existing = new Set(result.map(d => d.date));
+      const toAdd = missing.filter(d => !existing.has(d.date));
+      if (toAdd.length > 0) result = [...result, ...toAdd];
+    }
   }
 
   return result;
