@@ -6,7 +6,7 @@
 //   Btn  — 操作按鈕（支援 outline / small / disabled / 危險色）
 // ============================================================
 
-import { C } from "../../constants/theme";
+import { C, SH } from "../../constants/theme";
 
 // ── 文字 / 數字輸入框 ─────────────────────────────────────────
 // label：欄位標題（選填）
@@ -111,6 +111,7 @@ export function Btn({ children, onClick, color = C.accent, outline = false, smal
         whiteSpace: "nowrap",
         letterSpacing: "0.01em",
         fontFamily: "'Inter', sans-serif",
+        boxShadow: disabled || outline ? "none" : isRed ? SH.glow(color) : `0 1px 2px rgba(0,0,0,0.3)`,
       }}
     >
       {children}

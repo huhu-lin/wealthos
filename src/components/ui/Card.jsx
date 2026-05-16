@@ -4,7 +4,7 @@
 // 用法：<Card style={{ padding: 20 }}>內容</Card>
 // ============================================================
 
-import { C } from "../../constants/theme";
+import { C, SH } from "../../constants/theme";
 
 export default function Card({ children, style = {}, className = "" }) {
   return (
@@ -14,6 +14,7 @@ export default function Card({ children, style = {}, className = "" }) {
         background: `linear-gradient(150deg, ${C.surface} 0%, ${C.surface2} 100%)`,
         border: `1px solid ${C.border}`,
         borderRadius: 14,
+        boxShadow: SH.sm,
         ...style,
       }}
     >
