@@ -73,7 +73,7 @@ export const TT = {
     border: "1px solid #2A3F5C",
     borderRadius: 10,
     color: "#F1F5FB",
-    fontSize: 12,
+    fontSize: 13,
     boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
   },
   cursor: { stroke: "#3D5A82", strokeWidth: 1 },

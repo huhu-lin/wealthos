@@ -13,12 +13,15 @@ export default function Modal({ title, onClose, children }) {
     // 半透明遮罩層，點擊遮罩不關閉（需點 ✕ 或取消按鈕）
     <div style={{
       position: "fixed", inset: 0,
-      background: "rgba(0,0,0,0.78)",
+      background: "rgba(0,0,0,0.62)",
+      backdropFilter: "blur(4px)",
+      WebkitBackdropFilter: "blur(4px)",
       zIndex: 1000,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       padding: 20,
+      animation: "wos-backdropFade 0.2s ease forwards",
     }}>
       {/* 對話框本體，帶入場動畫 */}
       <div className="wos-slide" style={{
