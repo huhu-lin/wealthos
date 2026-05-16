@@ -6,11 +6,20 @@
 //       </Modal>
 // ============================================================
 
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { C } from "../../constants/theme";
 
 export default function Modal({ title, onClose, children }) {
-  return (
-    // 半透明遮罩層，點擊遮罩不關閉（需點 ✕ 或取消按鈕）
+  // Modal 開啟時鎖住 body 捲動，避免背景頁面捲動造成「彈窗跑到視窗外」
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  return createPortal(
+    // 半透明遮罩層，渲染至 document.body 避免被父層 transform 影響 fixed 定位
     <div style={{
       position: "fixed", inset: 0,
       background: "rgba(0,0,0,0.62)",
@@ -66,6 +75,7 @@ export default function Modal({ title, onClose, children }) {
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
