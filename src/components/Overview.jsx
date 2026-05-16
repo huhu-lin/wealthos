@@ -185,6 +185,25 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
     };
   }, [snapshots]);
 
+  // ── 趨勢圖資料：尾端追加/取代「今日即時」點，確保與卡片數字對齊 ──
+  // 用本地時區算今天（toISOString 是 UTC，會差時區）
+  // 若最後一筆已是今天的快照，直接取代為即時值（快照可能是早上跑的舊值）
+  const snapshotsWithLive = useMemo(() => {
+    if (!snapshots.length) return snapshots;
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const livePoint = {
+      date: today,
+      assets: totalAssets,
+      liabilities: totalLiab,
+      net: netWorth,
+      leverage,
+    };
+    const last = snapshots[snapshots.length - 1];
+    if (last?.date === today) return [...snapshots.slice(0, -1), livePoint];
+    return [...snapshots, livePoint];
+  }, [snapshots, totalAssets, totalLiab, netWorth, leverage]);
+
   // ── 圓餅圖資料（useMemo 保證穩定的物件參考）─────────────────────────
   const pieData = useMemo(() => [
     { name: "台股",   value: twTotal },
@@ -358,7 +377,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
             資產 · 負債 · 淨值趨勢
           </div>
           <ResponsiveContainer width="100%" height={isMobile ? 150 : 220}>
-            <AreaChart data={snapshots}>
+            <AreaChart data={snapshotsWithLive}>
               <defs>
                 {[["net", C.accent], ["assets", C.blue], ["liabilities", C.red]].map(([k, c]) => (
                   <linearGradient key={k} id={`g${k}`} x1="0" y1="0" x2="0" y2="1">
