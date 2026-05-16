@@ -20,8 +20,8 @@ export default function GlobalStyles() {
       /* ── 捲軸樣式 ─────────────────────────────────────── */
       ::-webkit-scrollbar { width: 5px; height: 5px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #1C2E45; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #2A4A70; }
+      ::-webkit-scrollbar-thumb { background: #2A3F5C; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3D5A82; }
 
       /* ── 動畫 keyframes ───────────────────────────────── */
       /* wos-fadeIn：頁面/頁籤切換時的淡入效果 */
@@ -71,13 +71,13 @@ export default function GlobalStyles() {
       .wos-row { transition: background 0.15s ease, border-color 0.15s ease; }
       .wos-row:hover {
         background: #111928 !important;
-        border-color: #2A4A70 !important;
+        border-color: #3D5A82 !important;
       }
 
       /* ── 導覽頁籤 hover ───────────────────────────────── */
       .wos-tab { transition: all 0.2s ease; }
       .wos-tab:hover {
-        color: #E2EAF4 !important;
+        color: #F1F5FB !important;
         background: rgba(255,255,255,0.04) !important;
       }
 

@@ -15,10 +15,10 @@ import { supabase } from "./supabase";
 
 const C = {
   bg:"#080C14", surface:"#0F1623", surface2:"#162030",
-  border:"#1C2E45", accent:"#00C896", accentDim:"#00C89618",
+  border:"#2A3F5C", accent:"#00C896", accentDim:"#00C89618",
   red:"#FF4D6D", redDim:"#FF4D6D18", gold:"#F5A623",
   blue:"#4D9EFF", orange:"#FF8C42",
-  text:"#E2EAF4", textMuted:"#5A7399",
+  text:"#F1F5FB", textMuted:"#A7BBD6",
 };
 
 const fmt = (n, d=0) => Math.abs(n).toLocaleString("zh-TW", {maximumFractionDigits:d});
