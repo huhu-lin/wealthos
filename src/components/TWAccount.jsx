@@ -212,9 +212,9 @@ export default function TWAccount({ assets, reload }) {
             borderRadius: 12,
             padding: "14px 18px",
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</span>
                   {a.ticker && <Badge text={a.ticker} color={C.blue} />}
                   {(a.leverage_ratio || 1) > 1 && <Badge text={`${a.leverage_ratio}x`} color={C.orange} />}
@@ -225,7 +225,7 @@ export default function TWAccount({ assets, reload }) {
                   {a.cost > 0   && ` ｜ 成本 NT$${a.cost}`}
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ color: C.accent, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
                     NT${fmt(a.value_twd)}
@@ -274,12 +274,12 @@ export default function TWAccount({ assets, reload }) {
             borderRadius: 12,
             padding: "14px 18px",
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ minWidth: 0, flex: "1 1 140px" }}>
                 <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{a.name}</div>
                 <div style={{ color: C.textMuted, fontSize: 11 }}>{a.note}</div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 <div style={{ color: C.purple, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
                   NT${fmt(a.value_twd)}
                 </div>

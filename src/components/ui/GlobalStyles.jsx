@@ -78,6 +78,10 @@ export default function GlobalStyles() {
         background: #111928 !important;
         border-color: #3D5A82 !important;
       }
+      /* 手機：資產列內的 flex 容器自動換行，避免編輯/刪除按鈕溢出 */
+      @media (max-width: 600px) {
+        .wos-row > div { flex-wrap: wrap !important; gap: 8px !important; }
+      }
 
       /* ── 導覽頁籤 hover ───────────────────────────────── */
       .wos-tab { transition: all 0.2s ease; }
@@ -136,6 +140,30 @@ export default function GlobalStyles() {
       }
       @media (max-width: 480px) {
         .wos-grid-3 { grid-template-columns: 1fr; }
+      }
+
+      /* ── FIRE 4 欄 KPI → 平板 2 欄 → 手機 1 欄 ────────── */
+      .wos-grid-fire-kpi {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+      @media (max-width: 900px) {
+        .wos-grid-fire-kpi { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (max-width: 480px) {
+        .wos-grid-fire-kpi { grid-template-columns: 1fr; }
+      }
+
+      /* ── FIRE 主視覺 3fr:2fr → 手機單欄 ──────────────── */
+      .wos-grid-fire-main {
+        display: grid;
+        grid-template-columns: 3fr 2fr;
+        gap: 12px;
+        align-items: start;
+      }
+      @media (max-width: 768px) {
+        .wos-grid-fire-main { grid-template-columns: 1fr; }
       }
 
       /* ── 6 欄 → 手機 3 欄（MarketBrief 總經指標）──────── */

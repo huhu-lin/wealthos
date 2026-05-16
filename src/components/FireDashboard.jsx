@@ -362,8 +362,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
       {/* ── 現金流摘要條 ─────────────────────────────────────── */}
       {cashflowStats ? (
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10,
+        <div className="wos-grid-fire-kpi" style={{
           padding: "12px 16px",
           background: C.surface3, border: `1px solid ${C.border}`, borderRadius: 12,
         }}>
@@ -384,7 +383,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       )}
 
       {/* ── KPI 卡片 ─────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+      <div className="wos-grid-fire-kpi">
         <KPI
           label={`Coast FIRE（${mode.label}）`}
           value={metrics.coastYears <= 0 ? "已達成 ✓" : `${metrics.coastYears.toFixed(1)} 年`}
@@ -454,7 +453,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       </Card>
 
       {/* ── FIRE 進度 + 負債里程碑 ───────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 12 }}>
+      <div className="wos-grid-fire-main">
 
         {/* FIRE 三目標進度條 */}
         <Card style={{ padding: "20px" }}>
