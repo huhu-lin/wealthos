@@ -15,6 +15,7 @@ import {
 import { C, TT, fmt } from "../constants/theme";
 import KPI  from "./ui/KPI";
 import Card from "./ui/Card";
+import CashflowManager from "./CashflowManager";
 
 // ── 情境報酬率 ───────────────────────────────────────────────
 const SCENARIOS = [
@@ -81,7 +82,7 @@ function CtrlBtn({ active, color, onClick, children, small }) {
   );
 }
 
-export default function FireDashboard({ allAssets, liabilities, cashflow = [], strategies = [] }) {
+export default function FireDashboard({ allAssets, liabilities, cashflow = [], strategies = [], reload }) {
   const [scenIdx,  setScenIdx]  = useState(1);      // 預設中性 12%
   const [fireMode, setFireMode] = useState("base");  // 預設 Base FIRE
   const [swr,      setSwr]      = useState(0.030);   // 預設 3%（33歲適合）
@@ -537,6 +538,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
         </div>
       </div>
+
+      {/* ── 現金流月度紀錄管理 ─────────────────────────────── */}
+      <CashflowManager cashflow={cashflow} reload={reload} />
     </div>
   );
 }

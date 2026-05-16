@@ -390,7 +390,7 @@ export default function App() {
           {tab === "liab"     && <Liabilities   liabilities={liabilities} reload={load} />}
           {tab === "pledge"   && <Pledge        pledges={pledges}     reload={load} />}
           {tab === "strategy" && <Strategy      allAssets={allAssets} />}
-          {tab === "fire"     && <FireDashboard allAssets={allAssets} liabilities={liabilities} cashflow={cashflow} strategies={strategies} />}
+          {tab === "fire"     && <FireDashboard allAssets={allAssets} liabilities={liabilities} cashflow={cashflow} strategies={strategies} reload={load} />}
         </div>
       </div>
     </>
