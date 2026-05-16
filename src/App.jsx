@@ -302,7 +302,7 @@ export default function App() {
             {/* NET WORTH：桌機顯示，手機隱藏（600px 以下） */}
             {!isMobile && (
               <div style={{ textAlign: "right" }}>
-                <div style={{ color: C.textMuted, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 2 }}>NET WORTH</div>
+                <div style={{ color: C.textMuted, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600, marginBottom: 2 }}>NET WORTH</div>
                 <div style={{ color: C.accent, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 16, letterSpacing: "-0.02em" }}>
                   NT${fmt(netWorth)}
                 </div>

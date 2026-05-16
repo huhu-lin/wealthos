@@ -18,9 +18,9 @@ export default function GlobalStyles() {
       }
 
       /* ── 捲軸樣式 ─────────────────────────────────────── */
-      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: #2A3F5C; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb { background: #2A3F5C; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #3D5A82; }
 
       /* ── 動畫 keyframes ───────────────────────────────── */
@@ -33,6 +33,11 @@ export default function GlobalStyles() {
       @keyframes wos-slideUp {
         from { opacity: 0; transform: translateY(14px) scale(0.98); }
         to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      /* wos-backdropFade：Modal 遮罩淡入 */
+      @keyframes wos-backdropFade {
+        from { opacity: 0; }
+        to   { opacity: 1; }
       }
       /* wos-spin：載入 spinner 旋轉 */
       @keyframes wos-spin {
