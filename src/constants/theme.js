@@ -29,6 +29,32 @@ export const C = {
   textDim: "#7A92B4",     // 更淡的說明文字（提升對比度）
 };
 
+// ── 字級系統（Typography Scale）──────────────────────────────
+// 集中管理字體大小／字重／行高，避免各元件 inline 寫死
+// 用法：<div style={{ ...T.h2, color: C.text }}>標題</div>
+export const T = {
+  h1:      { fontSize: 28, fontWeight: 700, lineHeight: 1.2,  letterSpacing: "-0.01em" },
+  h2:      { fontSize: 20, fontWeight: 700, lineHeight: 1.3 },
+  h3:      { fontSize: 16, fontWeight: 600, lineHeight: 1.4 },
+  body:    { fontSize: 14, fontWeight: 400, lineHeight: 1.5 },
+  caption: { fontSize: 12, fontWeight: 500, lineHeight: 1.4 },
+  label:   { fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" },
+  mono:    { fontFamily: "'JetBrains Mono', 'Courier New', monospace", letterSpacing: "-0.02em" },
+};
+
+// ── 間距系統（8px Grid）──────────────────────────────────────
+// 統一 padding／margin／gap 數值，所有間距盡量套用此系統
+export const S = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, "2xl": 32, "3xl": 48 };
+
+// ── 陰影系統（Elevation）─────────────────────────────────────
+// sm：細微浮起（卡片）／ md：明顯層次（彈窗、hover 卡片）
+// glow(color)：彩色發光陰影，用於主按鈕等需要強調的元素
+export const SH = {
+  sm: "0 1px 3px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.25)",
+  md: "0 8px 24px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3)",
+  glow: (color) => `0 2px 10px ${color}45, 0 1px 3px rgba(0,0,0,0.3)`,
+};
+
 // ── 槓桿倍數對照表 ────────────────────────────────────────────
 // 輸入股票代號會自動帶入槓桿倍率，用於計算實際曝險
 export const LEVERAGE_MAP = {

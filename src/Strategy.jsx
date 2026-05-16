@@ -12,19 +12,18 @@ function useWindowWidth() {
 }
 import { createChart } from "lightweight-charts";
 import { supabase } from "./supabase";
-
-const C = {
-  bg:"#080C14", surface:"#0F1623", surface2:"#162030",
-  border:"#2A3F5C", accent:"#00C896", accentDim:"#00C89618",
-  red:"#FF4D6D", redDim:"#FF4D6D18", gold:"#F5A623",
-  blue:"#4D9EFF", orange:"#FF8C42",
-  text:"#F1F5FB", textMuted:"#A7BBD6",
-};
+import { C, SH } from "./constants/theme";
 
 const fmt = (n, d=0) => Math.abs(n).toLocaleString("zh-TW", {maximumFractionDigits:d});
 
 function Card({children, style={}}) {
-  return <div style={{background:C.surface, border:`1px solid ${C.border}`, borderRadius:14, ...style}}>{children}</div>;
+  return <div style={{
+    background:`linear-gradient(150deg, ${C.surface} 0%, ${C.surface2} 100%)`,
+    border:`1px solid ${C.border}`,
+    borderRadius:14,
+    boxShadow: SH.sm,
+    ...style,
+  }}>{children}</div>;
 }
 
 function Badge({text, color=C.accent}) {
