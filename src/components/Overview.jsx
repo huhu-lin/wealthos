@@ -26,7 +26,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
 
-import { C, TT, fmt, fmtM, pct } from "../constants/theme";
+import { C, TT, SH, fmt, fmtM, pct } from "../constants/theme";
 import Card        from "./ui/Card";
 import KPI         from "./ui/KPI";
 import MarketBrief from "./MarketBrief";
@@ -302,6 +302,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
                   padding: "12px 14px",
                   cursor: histLen > 0 ? "pointer" : "default",
                   transition: "border-color 0.15s",
+                  boxShadow: SH.sm,
                 }}
                 onMouseEnter={e => { if (histLen > 0) e.currentTarget.style.borderColor = C.accent; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; }}
@@ -352,6 +353,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
               padding: "12px 16px",
               display: "flex", justifyContent: "space-between", alignItems: "center",
               cursor: onTabChange ? "pointer" : "default",
+              boxShadow: SH.sm,
             }}
           >
             <div style={{ color: C.textMuted, fontSize: 12, fontWeight: 500 }}>
