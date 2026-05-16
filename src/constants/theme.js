@@ -11,8 +11,8 @@ export const C = {
   surface: "#0B1120",     // 卡片背景
   surface2: "#101928",    // 卡片漸層結尾
   surface3: "#162030",    // 內嵌區塊背景
-  border: "#1C2E45",      // 預設邊框
-  borderHover: "#2A4A70", // hover 邊框
+  border: "#2A3F5C",      // 預設邊框
+  borderHover: "#3D5A82", // hover 邊框
   accent: "#00C896",      // 主色（綠）— 正值、主要按鈕
   accentDim: "#00C89615", // 主色低透明度背景
   accentGlow: "#00C89630",// 主色發光效果
@@ -24,9 +24,9 @@ export const C = {
   blueDim: "#4D9EFF15",
   purple: "#9B6DFF",      // 其他資產、現金
   orange: "#FF6B35",      // 曝險倍率、強調
-  text: "#E2EAF4",        // 主要文字
-  textMuted: "#5A7399",   // 次要文字
-  textDim: "#3A5478",     // 更淡的說明文字
+  text: "#F1F5FB",        // 主要文字
+  textMuted: "#A7BBD6",   // 次要文字（提升對比度）
+  textDim: "#7A92B4",     // 更淡的說明文字（提升對比度）
 };
 
 // ── 槓桿倍數對照表 ────────────────────────────────────────────
@@ -44,13 +44,13 @@ export const LEVERAGE_MAP = {
 export const TT = {
   contentStyle: {
     background: "#101928",
-    border: "1px solid #1C2E45",
+    border: "1px solid #2A3F5C",
     borderRadius: 10,
-    color: "#E2EAF4",
+    color: "#F1F5FB",
     fontSize: 12,
     boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
   },
-  cursor: { stroke: "#2A4A70", strokeWidth: 1 },
+  cursor: { stroke: "#3D5A82", strokeWidth: 1 },
 };
 
 // ── 數值格式化工具 ────────────────────────────────────────────
