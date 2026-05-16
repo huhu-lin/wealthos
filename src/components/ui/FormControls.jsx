@@ -48,7 +48,8 @@ export function Inp({ label, value, onChange, placeholder, type = "text" }) {
 
 // ── 下拉選單 ─────────────────────────────────────────────────
 // options：字串陣列，e.g. ["etf", "cash"]
-export function Sel({ label, value, onChange, options }) {
+// labelMap：可選，{ value: "顯示文字" } 對照表
+export function Sel({ label, value, onChange, options, labelMap }) {
   return (
     <div>
       {label && (
@@ -74,7 +75,7 @@ export function Sel({ label, value, onChange, options }) {
           transition: "border-color 0.15s ease",
         }}
       >
-        {options.map(o => <option key={o}>{o}</option>)}
+        {options.map(o => <option key={o} value={o}>{labelMap ? (labelMap[o] ?? o) : o}</option>)}
       </select>
     </div>
   );

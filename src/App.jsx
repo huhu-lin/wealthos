@@ -25,6 +25,7 @@ import OtherAccount  from "./components/OtherAccount";
 import Liabilities   from "./components/Liabilities";
 import Pledge        from "./components/Pledge";
 import Strategy      from "./Strategy";
+import FireDashboard from "./components/FireDashboard";
 import LoginPage     from "./components/LoginPage";
 
 // ── Tab 清單（id 對應路由、label 顯示名稱、icon 圖示）──────
@@ -37,6 +38,7 @@ const TABS = [
   { id: "other",    label: "其他", icon: "🏠" },
   { id: "liab",     label: "負債", icon: "📋" },
   { id: "pledge",   label: "質押", icon: "🔒" },
+  { id: "fire",     label: "FIRE", icon: "🔥" },
 ];
 
 // ── RWD Hook（本地定義，避免跨模組依賴）────────────────────
@@ -77,6 +79,8 @@ export default function App() {
   const [liabilities, setLiabilities] = useState([]);
   const [snapshots,   setSnapshots]   = useState([]);
   const [pledges,     setPledges]     = useState([]);
+  const [cashflow,    setCashflow]    = useState([]);
+  const [strategies,  setStrategies]  = useState([]);
   const [usdRate,     setUsdRate]     = useState(31.5);
   const [loading,     setLoading]     = useState(true);
 
@@ -105,12 +109,13 @@ export default function App() {
           localStorage.setItem(claimKey, '1');
         }
       }
-      const [a, l, s, p, rate] = await Promise.all([
+      const [a, l, s, p, cf, st, rate] = await Promise.all([
         supabase.from("assets").select("*").order("account"),
         supabase.from("liabilities").select("*"),
-        // monthly_snapshots 最多撈最近 365 筆，防止資料過多導致性能問題
         supabase.from("monthly_snapshots").select("*").order("date", { ascending: false }).limit(365),
         supabase.from("pledges").select("*"),
+        supabase.from("cashflow_summary").select("*").order("month", { ascending: false }).limit(24),
+        supabase.from("strategy_tickers").select("ticker,is_us,latest_j,j_above_flag,j_below_flag,last_signal,last_signal_date,j_entry,j_exit"),
         fetchUSDTWD(),
       ]);
 
@@ -119,12 +124,14 @@ export default function App() {
       if (l.error) throw new Error(`負債資料載入失敗: ${l.error.message}`);
       if (s.error) throw new Error(`快照資料載入失敗: ${s.error.message}`);
       if (p.error) throw new Error(`質押資料載入失敗: ${p.error.message}`);
+      // cashflow 是選配，載入失敗不中斷
 
       setAllAssets(a.data   || []);
       setLiabilities(l.data || []);
-      // 由於 Supabase 查詢加了 limit，需在前端按日期升序排列
       setSnapshots((s.data || []).sort((x, y) => new Date(x.date) - new Date(y.date)));
       setPledges(p.data     || []);
+      setCashflow(cf.data   || []);
+      setStrategies(st.data || []);
       setUsdRate(rate       || 31.5);
 
       // ── 每日自動快照（當天尚無快照且有資產時寫入）─────────
@@ -383,6 +390,7 @@ export default function App() {
           {tab === "liab"     && <Liabilities   liabilities={liabilities} reload={load} />}
           {tab === "pledge"   && <Pledge        pledges={pledges}     reload={load} />}
           {tab === "strategy" && <Strategy      allAssets={allAssets} />}
+          {tab === "fire"     && <FireDashboard allAssets={allAssets} liabilities={liabilities} cashflow={cashflow} strategies={strategies} />}
         </div>
       </div>
     </>

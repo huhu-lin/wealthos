@@ -246,6 +246,18 @@ export default async function handler(req) {
     const modeLabel = strategyMode === 'asymmetric' ? '⚡P002' : '訊號';
     console.log(`[${ticker}][${modeLabel}] signal=${signal ?? 'null'}, J=${kdj?.j?.toFixed(1)}, 蓄力=${jBelowFlag}, 過熱=${jAboveFlag}`);
 
+    // 每次都寫回最新市場狀態（FIRE dashboard 讀取用）
+    const stateUpdate = {
+      latest_j:      kdj?.j ?? null,
+      j_above_flag:  jAboveFlag,
+      j_below_flag:  jBelowFlag,
+    };
+    if (signal) {
+      stateUpdate.last_signal      = signal;
+      stateUpdate.last_signal_date = new Date().toISOString().slice(0, 10);
+    }
+    await supabase.from('strategy_tickers').update(stateUpdate).eq('id', st.id);
+
     if (!signal) continue;
 
     const signalText = signal === 'BUY' ? '📈 反轉向上訊號' : '📉 反轉向下訊號';
