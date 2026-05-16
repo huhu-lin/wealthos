@@ -355,7 +355,7 @@ function calcMonitorPerformance(klineData, { amount, target, j_entry, j_exit, st
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
-function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13, tickerConfig=null }) {
+function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13, tickerConfig=null, currentDrift=0 }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -442,6 +442,25 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       }
     }
 
+    // P-007：最後一根 K 棒用真實持倉的偏離判斷是否補金圈
+    // 回測 rebalEvents 與真實持倉可能不同步，改用 currentDrift prop 直接判斷
+    if (strategyMode === 'p007' && currentDrift >= gatePct) {
+      const lastIdx = data.length - 1;
+      const lastSig = signals.find(s => s.index === lastIdx);
+      if (lastSig) {
+        const alreadyMarked = allMarkers.some(m => m.time === data[lastIdx].date && m.shape === 'circle');
+        if (!alreadyMarked) {
+          allMarkers.push({
+            time:     data[lastIdx].date,
+            position: lastSig.type === 'BUY' ? 'belowBar' : 'aboveBar',
+            color:    '#FFD700',
+            shape:    'circle',
+            text:     lastSig.type === 'BUY' ? '✓買' : '✓賣',
+          });
+        }
+      }
+    }
+
     // lightweight-charts 要求 markers 按時間升序排列
     allMarkers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
     candleSeries.setMarkers(allMarkers);
@@ -471,7 +490,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
       if (kdjInstance.current) { kdjInstance.current.remove(); kdjInstance.current = null; }
     };
   // winWidth 變化時重建圖表以套用新高度；tickerConfig 變化時重繪再平衡執行標記
-  }, [data, jEntry, jExit, chartH, kdjH, tickerConfig]);
+  }, [data, jEntry, jExit, chartH, kdjH, tickerConfig, currentDrift]);
 
   const closes = data.map(d => d.close);
   const highs  = data.map(d => d.high);
@@ -1059,22 +1078,32 @@ function MonitorTab({ allAssets }) {
       ) : (
         <>
           <PreMarketSummary tickers={tickers} klineMap={klineMap} allAssets={allAssets} />
-          {tickers.map(t => (
-            <KChart
-              key={t.id}
-              data={klineMap[t.ticker]||[]}
-              ticker={t.ticker}
-              isUS={t.is_us}
-              assets={allAssets}
-              target={t.target}
-              jEntry={t.j_entry}
-              jExit={t.j_exit}
-              strategyMode={t.strategy_mode||'signal'}
-              driftPct={25}
-              gatePct={t.gate_pct||13}
-              tickerConfig={t}
-            />
-          ))}
+          {tickers.map(t => {
+            const _cashName = t.is_us ? 'USD' : '現金';
+            const _holding  = allAssets.find(a => a.name === t.ticker);
+            const _cash     = allAssets.find(a => a.name === _cashName);
+            const _pool     = (_holding?.value_twd || 0) + (_cash?.value_twd || 0);
+            const _drift    = _pool > 0
+              ? Math.abs((_holding?.value_twd || 0) / _pool * 100 - t.target * 100)
+              : 0;
+            return (
+              <KChart
+                key={t.id}
+                data={klineMap[t.ticker]||[]}
+                ticker={t.ticker}
+                isUS={t.is_us}
+                assets={allAssets}
+                target={t.target}
+                jEntry={t.j_entry}
+                jExit={t.j_exit}
+                strategyMode={t.strategy_mode||'signal'}
+                driftPct={25}
+                gatePct={t.gate_pct||13}
+                tickerConfig={t}
+                currentDrift={_drift}
+              />
+            );
+          })}
         </>
       )}
     </div>
