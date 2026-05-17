@@ -13,6 +13,8 @@ from datetime import datetime, timezone, timedelta
 import yfinance as yf
 import requests
 
+from news_sources import fetch_market_news, format_news_block, top_news_links
+
 # ── 時區常數 ──────────────────────────────────────────────────
 TWN = timezone(timedelta(hours=8))
 
@@ -111,17 +113,6 @@ def get_tx_futures():
         print(f"  ❌ 台指期夜盤：{e}")
         return None
 
-# ── 鉅亨網新聞 ────────────────────────────────────────────────
-def get_news(category, limit=4):
-    url = f"https://news.cnyes.com/api/v3/news/category/{category}?limit={limit}"
-    try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        items = r.json().get("items", {}).get("data", [])
-        return [{"title": d.get("title", "")} for d in items]
-    except Exception as e:
-        print(f"  ❌ 新聞 {category}: {e}")
-        return []
-
 # ── Gemini 生成摘要 ──────────────────────────────────────────
 def fmt_pair(d, unit=""):
     if not d or d.get("value") is None: return "N/A"
@@ -129,19 +120,19 @@ def fmt_pair(d, unit=""):
     chg_str = f" ({chg:+.2f}%)" if chg is not None else ""
     return f"{d['value']}{unit}{chg_str}"
 
-def generate_summary(mkt, tx, tw_news, us_news, intl_news):
+def generate_summary(mkt, tx, news_grouped):
     last_td = "上週五" if twn_now().weekday() == 0 else "昨日"
 
-    tw_titles   = "\n".join([f"- {n['title']}" for n in tw_news[:4]]) or "（無）"
-    us_titles   = "\n".join([f"- {n['title']}" for n in us_news[:3]]) or "（無）"
-    intl_titles = "\n".join([f"- {n['title']}" for n in intl_news[:3]]) or "（無）"
-
     tx_line = f"- 台指期夜盤：{fmt_pair(tx)}" if tx else "- 台指期夜盤：N/A"
+    news_block = format_news_block(news_grouped)
 
     prompt = f"""你是一位台灣資深財經分析師，請根據以下數據撰寫今日「開盤前重點分析」，繁體中文約 200 字。
+
+【使用者投資偏好】市值型/大盤 ETF。請以「大盤、ETF、權值股（台積電/鴻海/聯發科/台達電/廣達/富邦金/中信金 等）動向」為分析重心；個股新聞僅在判斷其對加權指數有顯著拉抬或拖累時提及，否則略過。CNBC 英文內容請翻譯後納入。
+
 要求：
 1. 開頭一句點出今日台股開盤可能走勢方向（偏多/偏空/震盪）並說明關鍵推力。
-2. 接著用 2~3 句連貫敘述：美股動向、台指期夜盤暗示、國際股市與商品/匯率影響。
+2. 接著用 2~3 句連貫敘述：美股動向、台指期夜盤暗示、國際股市與商品/匯率影響，並結合新聞中與大盤/權值股相關的訊息。
 3. 最後一句點出今日需要關注的風險或事件。
 語氣專業簡潔、直接輸出內文，不需標題或條列。
 【注意】只分析市場環境，不得建議具體買賣標的。
@@ -167,14 +158,7 @@ def generate_summary(mkt, tx, tw_news, us_news, intl_news):
 - 美10年期殖利率：{fmt_pair(mkt.get('us10y'), '%')}
 - 美元指數 DXY：{fmt_pair(mkt.get('dxy'))}
 
-【今日台股重點新聞】
-{tw_titles}
-
-【{last_td}美股重點新聞】
-{us_titles}
-
-【國際 / 總經重點新聞】
-{intl_titles}"""
+{news_block}"""
 
     models = [
         "gemini-2.5-flash",
@@ -234,14 +218,11 @@ mkt = get_market_data()
 print("\n【步驟 2】抓取台指期夜盤")
 tx = get_tx_futures()
 
-print("\n【步驟 3】抓取新聞")
-tw_news   = get_news("tw_stock", 4)
-us_news   = get_news("us_stock", 3)
-intl_news = get_news("wd_stock", 3)
-print(f"  台股新聞：{len(tw_news)} 則 / 美股新聞：{len(us_news)} 則 / 國際新聞：{len(intl_news)} 則")
+print("\n【步驟 3】抓取多來源新聞（24h 內，鉅亨網 + UDN money + CNBC）")
+news_grouped = fetch_market_news("premarket")
 
 print("\n【步驟 4】Gemini 生成盤前分析")
-summary = generate_summary(mkt, tx, tw_news, us_news, intl_news)
+summary = generate_summary(mkt, tx, news_grouped)
 
 print("\n【步驟 5】組合 Telegram 訊息")
 last_td = "上週五" if twn_now().weekday() == 0 else "昨日"
@@ -276,7 +257,19 @@ if summary:
 else:
     lines += ["", "<i>⚠️  AI 摘要生成失敗，僅推送原始數據</i>"]
 
-lines += ["", "<i>資料來源：yfinance / FinMind / 鉅亨網</i>"]
+top_links = top_news_links(news_grouped, n=5)
+if top_links:
+    lines += ["", "<b>📰 重點新聞（24h 內最新）</b>"]
+    for n in top_links:
+        title = (n.get("title") or "").replace("<", "&lt;").replace(">", "&gt;")
+        url   = n.get("url") or ""
+        src   = n.get("source") or ""
+        if url:
+            lines.append(f"• <a href=\"{url}\">[{src}] {title}</a>")
+        else:
+            lines.append(f"• [{src}] {title}")
+
+lines += ["", "<i>資料來源：yfinance / FinMind / 鉅亨網 / 經濟日報 / CNBC</i>"]
 
 message = "\n".join(lines)
 # Telegram 單則訊息上限 4096 字元

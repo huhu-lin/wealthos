@@ -18,6 +18,11 @@ dist
 dist-ssr
 *.local
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
 # Personal reports — kept locally, not committed
 *_REPORT.md
 
