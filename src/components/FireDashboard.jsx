@@ -12,7 +12,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from "recharts";
-import { C, TT, fmt } from "../constants/theme";
+import { C, T, S, TT, fmt } from "../constants/theme";
 import KPI  from "./ui/KPI";
 import Card from "./ui/Card";
 import CashflowManager from "./CashflowManager";
@@ -286,7 +286,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
                       border: `1px solid ${C.border}`,
                     }}>
                       <div style={{ fontSize: 9, color: C.textDim, marginBottom: 3 }}>{item.label}</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.red, fontFamily: "'JetBrains Mono', monospace" }}>{item.val}</div>
+                      <div style={{ ...T.mono, fontSize: 14, fontWeight: 700, color: C.red }}>{item.val}</div>
                       <div style={{ fontSize: 10, color: C.textDim }}>{item.dim}</div>
                     </div>
                   ))}
@@ -328,8 +328,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             }}
           />
           <span style={{
-            fontSize: 12, fontWeight: 700, color: mode.color,
-            fontFamily: "'JetBrains Mono', monospace", minWidth: 110,
+            ...T.mono, fontSize: 12, fontWeight: 700, color: mode.color, minWidth: 110,
           }}>
             NT${fmt(monthly)}/月
           </span>
@@ -416,9 +415,8 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       {/* ── 成長預測圖 ────────────────────────────────────────── */}
       <Card style={{ padding: "20px 20px 12px" }}>
         <div style={{
-          fontSize: 10, fontWeight: 700, color: C.textMuted,
-          letterSpacing: "0.09em", textTransform: "uppercase",
-          marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          ...T.label, fontSize: 10, color: C.textMuted,
+          marginBottom: S.lg, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
         }}>
           投資組合成長預測（25年）
           <span style={{ fontSize: 10, fontWeight: 400, textTransform: "none", color: C.textDim }}>
@@ -457,11 +455,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
         {/* FIRE 三目標進度條 */}
         <Card style={{ padding: "20px" }}>
-          <div style={{
-            fontSize: 10, fontWeight: 700, color: C.textMuted,
-            letterSpacing: "0.09em", textTransform: "uppercase",
-            marginBottom: 6,
-          }}>
+          <div style={{ ...T.label, fontSize: 10, color: C.textMuted, marginBottom: S.sm - 2 }}>
             FIRE 目標進度
           </div>
           <div style={{ fontSize: 10, color: C.textDim, marginBottom: 16 }}>
@@ -484,7 +478,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
                     <span style={{ color: C.textMuted, fontSize: 11 }}>月支出 NT${fmt(fp.monthly)}</span>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <span style={{ color: fp.color, fontWeight: 800, fontSize: 15, fontFamily: "'JetBrains Mono', monospace" }}>
+                    <span style={{ ...T.mono, color: fp.color, fontWeight: 800, fontSize: 15 }}>
                       {(fp.pct * 100).toFixed(0)}%
                     </span>
                     <span style={{ color: C.textDim, fontSize: 10, marginLeft: 6 }}>
@@ -515,10 +509,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
           {/* 負債還清里程碑 */}
           <Card style={{ padding: "20px", flex: 1 }}>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: C.textMuted,
-              letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: 14,
-            }}>
+            <div style={{ ...T.label, fontSize: 10, color: C.textMuted, marginBottom: S.md + 2 }}>
               負債還清里程碑
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -553,7 +544,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
                 background: C.accent + "0F", border: `1px solid ${C.accent}30`, borderRadius: 10,
               }}>
                 <div style={{ fontSize: 10, color: C.textMuted, marginBottom: 4 }}>學貸 + 信貸全還清後</div>
-                <div style={{ color: C.accent, fontWeight: 700, fontSize: 14, fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ ...T.mono, color: C.accent, fontWeight: 700, fontSize: 14 }}>
                   月現金流 +NT${fmt((loans.student.monthly || 0) + (loans.credit.monthly || 0))}
                 </div>
               </div>
@@ -562,10 +553,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
           {/* 保險緩衝 */}
           <Card style={{ padding: "14px 16px" }}>
-            <div style={{
-              fontSize: 10, fontWeight: 700, color: C.textMuted,
-              letterSpacing: "0.09em", textTransform: "uppercase", marginBottom: 10,
-            }}>
+            <div style={{ ...T.label, fontSize: 10, color: C.textMuted, marginBottom: S.md - 2 }}>
               保險緩衝
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -596,7 +584,7 @@ function CfStat({ label, value, color, neg }) {
   return (
     <div>
       <div style={{ fontSize: 9, color: C.textDim, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-      <div style={{ color, fontWeight: 700, fontSize: 14, fontFamily: "'JetBrains Mono', monospace" }}>
+      <div style={{ ...T.mono, color, fontWeight: 700, fontSize: 14 }}>
         {neg ? "-" : ""}NT${fmt(Math.abs(value))}
       </div>
     </div>
@@ -635,7 +623,7 @@ function InsuranceRow({ icon, label, value, color, note }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{label}</span>
-          <span style={{ color, fontWeight: 700, fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{value}</span>
+          <span style={{ ...T.mono, color, fontWeight: 700, fontSize: 11 }}>{value}</span>
         </div>
         <div style={{ color: C.textDim, fontSize: 10, marginTop: 3 }}>{note}</div>
       </div>
