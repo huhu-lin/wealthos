@@ -3,7 +3,7 @@ import { createChart } from "lightweight-charts";
 import { supabase } from "./supabase";
 import { C, SH } from "./constants/theme";
 import { useIsMobile } from "./utils/useBreakpoint";
-import { calcBB, calcKDJ, checkSignals, computeIndicators } from "./utils/strategyIndicators";
+import { computeIndicators } from "./utils/strategyIndicators";
 
 // 共用常數（年化計算 / 風險調整）
 const TRADING_DAYS_PER_YEAR = 252;
@@ -253,13 +253,9 @@ function calcMonitorPerformance(klineData, { amount, target, j_entry, j_exit, st
   const data = klineData.filter(d => d.date >= entry_date);
   if (data.length < 20) return null; // 資料不足（< 20根K棒），無法穩定計算指標
 
-  const closes = data.map(d => d.close);
-  const highs  = data.map(d => d.high  || d.close);
-  const lows   = data.map(d => d.low   || d.close);
-
-  const bb      = calcBB(closes);
-  const kdj     = calcKDJ(closes, highs, lows);
-  const signals = checkSignals(closes, bb, kdj, j_entry, j_exit, strategy_mode);
+  const { closes, signals } = computeIndicators(data, {
+    jEntry: j_entry, jExit: j_exit, strategyMode: strategy_mode,
+  });
   const buySigs  = new Set(signals.filter(s => s.type === 'BUY').map(s => s.index));
   const sellSigs = new Set(signals.filter(s => s.type === 'SELL').map(s => s.index));
 
@@ -667,13 +663,10 @@ function PreMarketSummary({ tickers, klineMap, allAssets }) {
     const data = klineMap[t.ticker] || [];
     if (data.length < 21) return null; // 至少需要 20 根才能算 BB
 
-    const closes = data.map(d => d.close);
-    const highs  = data.map(d => d.high);
-    const lows   = data.map(d => d.low);
-    const bb  = calcBB(closes);
-    const kdj = calcKDJ(closes, highs, lows);
+    const { closes, bb, kdj, signals: _sigs } = computeIndicators(data, {
+      jEntry: t.j_entry, jExit: t.j_exit, strategyMode: t.strategy_mode || 'signal',
+    });
     // 兩步驟訊號集合（P-007 signalActive 與 signal mode advice 使用）
-    const _sigs     = checkSignals(closes, bb, kdj, t.j_entry, t.j_exit, t.strategy_mode || 'signal');
     const _buySigs  = new Set(_sigs.filter(s => s.type === 'BUY').map(s => s.index));
     const _sellSigs = new Set(_sigs.filter(s => s.type === 'SELL').map(s => s.index));
     const _lastIdx  = closes.length - 1;
@@ -1209,12 +1202,9 @@ function BacktestTab() {
       const alignedBmRaw  = bmRawInit.filter(d => d.date >= alignStart);
       if (!alignedRaw.length) { comboResults.push(null); continue; }
 
-      const closes = alignedRaw.map(d=>d.close);
-      const highs  = alignedRaw.map(d=>d.high  || d.close);
-      const lows   = alignedRaw.map(d=>d.low   || d.close);
-      const bb = calcBB(closes);
-      const kdj = calcKDJ(closes, highs, lows);
-      const signals = checkSignals(closes, bb, kdj, cp.j_entry, cp.j_exit);
+      const { closes, signals } = computeIndicators(alignedRaw, {
+        jEntry: cp.j_entry, jExit: cp.j_exit,
+      });
       const buySigs  = new Set(signals.filter(s=>s.type==='BUY').map(s=>s.index));
       const sellSigs = new Set(signals.filter(s=>s.type==='SELL').map(s=>s.index));
 
