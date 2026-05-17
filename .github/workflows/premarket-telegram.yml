@@ -1,0 +1,33 @@
+name: Pre-market Telegram Brief
+
+# 台灣時間週一至週五 08:00（開盤前一小時）推播盤前重點分析
+# UTC 00:00 Mon-Fri = TWN 08:00
+# 內容：美股收盤 + 台指期夜盤 + 國際股市 + 商品/匯率 + AI 盤前研判
+
+on:
+  schedule:
+    - cron: "0 0 * * 1-5"   # UTC 00:00 Mon-Fri = TWN 08:00
+  workflow_dispatch:          # 允許手動觸發（測試用）
+
+jobs:
+  send-premarket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install yfinance requests --quiet
+
+      - name: Send pre-market Telegram brief
+        env:
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          FINMIND_TOKEN:      ${{ secrets.FINMIND_TOKEN }}
+        run: python scripts/premarket_telegram.py
