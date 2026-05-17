@@ -39,12 +39,20 @@ export const T = {
   body:    { fontSize: 14, fontWeight: 400, lineHeight: 1.5 },
   caption: { fontSize: 12, fontWeight: 500, lineHeight: 1.4 },
   label:   { fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" },
+  section: { fontSize: 13, fontWeight: 700, letterSpacing: "0.01em" },
   mono:    { fontFamily: "'JetBrains Mono', 'Courier New', monospace", letterSpacing: "-0.02em" },
 };
 
 // ── 間距系統（8px Grid）──────────────────────────────────────
 // 統一 padding／margin／gap 數值，所有間距盡量套用此系統
 export const S = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, "2xl": 32, "3xl": 48 };
+
+// ── 響應式斷點 ──────────────────────────────────────────────
+// 跟 src/utils/useBreakpoint.js 的 hook 搭配使用
+// mobile  ≤ 480：手機直向（單欄、隱藏次要資訊）
+// tablet  ≤ 768：手機橫向 / 小平板（雙欄）
+// header  ≤ 600：App 頂部 bar 專用（資訊較密，較早進入手機 layout）
+export const BP = { mobile: 480, tablet: 768, header: 600, desktop: 1024 };
 
 // ── 陰影系統（Elevation）─────────────────────────────────────
 // sm：細微浮起（卡片）／ md：明顯層次（彈窗、hover 卡片）

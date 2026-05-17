@@ -415,7 +415,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       {/* ── 成長預測圖 ────────────────────────────────────────── */}
       <Card style={{ padding: "20px 20px 12px" }}>
         <div style={{
-          ...T.label, fontSize: 10, color: C.textMuted,
+          ...T.section, color: C.text,
           marginBottom: S.lg, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
         }}>
           投資組合成長預測（25年）
@@ -455,7 +455,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
         {/* FIRE 三目標進度條 */}
         <Card style={{ padding: "20px" }}>
-          <div style={{ ...T.label, fontSize: 10, color: C.textMuted, marginBottom: S.sm - 2 }}>
+          <div style={{ ...T.section, color: C.text, marginBottom: S.sm - 2 }}>
             FIRE 目標進度
           </div>
           <div style={{ fontSize: 10, color: C.textDim, marginBottom: 16 }}>
@@ -509,7 +509,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
           {/* 負債還清里程碑 */}
           <Card style={{ padding: "20px", flex: 1 }}>
-            <div style={{ ...T.label, fontSize: 10, color: C.textMuted, marginBottom: S.md + 2 }}>
+            <div style={{ ...T.section, color: C.text, marginBottom: S.md + 2 }}>
               負債還清里程碑
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -553,7 +553,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
           {/* 保險緩衝 */}
           <Card style={{ padding: "14px 16px" }}>
-            <div style={{ ...T.label, fontSize: 10, color: C.textMuted, marginBottom: S.md - 2 }}>
+            <div style={{ ...T.section, color: C.text, marginBottom: S.md - 2 }}>
               保險緩衝
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

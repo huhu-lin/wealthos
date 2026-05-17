@@ -8,18 +8,9 @@
 //   5. 配置圓餅圖
 // ============================================================
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
+import { useIsMobile } from "../utils/useBreakpoint";
 
-// ── RWD Hook（本地定義）─────────────────────────────────────
-function useWindowWidth() {
-  const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 1280);
-  useEffect(() => {
-    const h = () => setW(window.innerWidth);
-    window.addEventListener("resize", h);
-    return () => window.removeEventListener("resize", h);
-  }, []);
-  return w;
-}
 import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -32,8 +23,7 @@ import KPI         from "./ui/KPI";
 import MarketBrief from "./MarketBrief";
 
 export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets, liabilities, snapshots, usdRate, onTabChange }) {
-  const winWidth = useWindowWidth();
-  const isMobile = winWidth <= 480;
+  const isMobile = useIsMobile();
 
   // ── 週/月/年歷史 Modal ──────────────────────────────────────
   const [selectedPeriod, setSelectedPeriod] = useState(null); // null | 'week' | 'month' | 'year'
@@ -223,7 +213,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
 
       {/* ── 淨值主卡 ─────────────────────────────────────── */}
       <div style={{
-        background: `linear-gradient(135deg, ${C.surface} 0%, #0d1a2d 100%)`,
+        background: `linear-gradient(150deg, ${C.surface} 0%, #0d1a2d 100%)`,
         border: `1px solid ${C.borderHover}`,
         borderRadius: 16,
         padding: isMobile ? "16px 16px" : "22px 24px",
@@ -375,7 +365,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       {/* ── 趨勢圖（需累積 snapshots 才顯示）────────────── */}
       {snapshots.length > 0 ? (
         <Card style={{ padding: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 16, color: C.text }}>
+          <div style={{ ...T.section, color: C.text, marginBottom: S.lg }}>
             資產 · 負債 · 淨值趨勢
           </div>
           <ResponsiveContainer width="100%" height={isMobile ? 150 : 220}>
@@ -423,7 +413,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       {/* ── 資產配置圓餅圖 ───────────────────────────────── */}
       {pieData.length > 0 && (
         <Card style={{ padding: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: C.text }}>資產配置</div>
+          <div style={{ ...T.section, color: C.text, marginBottom: S.md }}>資產配置</div>
           <ResponsiveContainer width="100%" height={isMobile ? 150 : 180}>
             <PieChart>
               <Pie data={pieData} cx="50%" cy="50%"
