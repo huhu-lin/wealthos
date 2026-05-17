@@ -1,8 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createChart } from "lightweight-charts";
 import { supabase } from "./supabase";
 import { C, SH } from "./constants/theme";
 import { useIsMobile } from "./utils/useBreakpoint";
+import { calcBB, calcKDJ, checkSignals, computeIndicators } from "./utils/strategyIndicators";
+
+// 共用常數（年化計算 / 風險調整）
+const TRADING_DAYS_PER_YEAR = 252;
+const RISK_FREE_RATE = 0.02;
 
 const fmt = (n, d=0) => Math.abs(n).toLocaleString("zh-TW", {maximumFractionDigits:d});
 
@@ -238,45 +243,7 @@ async function pollKlineCache(cacheKey, bucketedDays, actualDays, onProgress) {
   return null;
 }
 
-// ─── 指標計算 ────────────────────────────────────────────────
-function calcBB(closes, period=20, mult=2) {
-  return closes.map((_, i) => {
-    if (i < period-1) return null;
-    const slice = closes.slice(i-period+1, i+1);
-    const mean = slice.reduce((a,b)=>a+b,0)/period;
-    const std = Math.sqrt(slice.reduce((a,b)=>a+(b-mean)**2,0)/period);
-    return { upper: mean+mult*std, lower: mean-mult*std, basis: mean };
-  });
-}
-
-// ✅ 修復版：RSV 使用實際 K 線 High/Low，非收盤價序列極值
-// 舊版用 closes.slice() 的 max/min 會壓縮波動幅度，導致 RSV 偏低、J 值訊號偏差
-function calcKDJ(closes, highs, lows, period=9) {
-  let k = 50, d = 50;
-  return closes.map((_, i) => {
-    if (i < period-1) return null;
-    const high = Math.max(...highs.slice(i-period+1, i+1));
-    const low  = Math.min(...lows.slice(i-period+1, i+1));
-    const rsv = high===low ? 50 : (closes[i]-low)/(high-low)*100;
-    k = k*2/3 + rsv/3;
-    d = d*2/3 + k/3;
-    return { k, d, j: 3*k - 2*d };
-  });
-}
-
-function checkSignals(closes, bb, kdj, jEntry=10, jExit=90, strategyMode='signal') {
-  const signals = [];
-  let jBelowFlag = false, jAboveFlag = false;
-  for (let i = 1; i < closes.length; i++) {
-    if (!bb[i] || !kdj[i] || !bb[i-1] || !kdj[i-1]) continue;
-    if (closes[i-1] < bb[i-1].lower && kdj[i-1].j < jEntry) jBelowFlag = true;
-    // P002 非對稱：賣出靠偏移閾值，不靠 KDJ，跳過 jAboveFlag
-    if (strategyMode !== 'asymmetric' && closes[i-1] > bb[i-1].upper && kdj[i-1].j > jExit) jAboveFlag = true;
-    if (jBelowFlag && kdj[i].j > jEntry) { signals.push({ index:i, type:'BUY' }); jBelowFlag = false; }
-    if (jAboveFlag && kdj[i].j < jExit) { signals.push({ index:i, type:'SELL' }); jAboveFlag = false; }
-  }
-  return signals;
-}
+// ─── 指標計算已抽至 src/utils/strategyIndicators.js（calcBB / calcKDJ / checkSignals）
 
 // ─── 監控策略績效模擬 ─────────────────────────────────────────
 // 從進場日起，模擬嚴格執行策略的績效，用來與實際庫存比較
@@ -353,17 +320,18 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
   const chartH = isMobile ? 220 : 320;
   const kdjH   = isMobile ? 120 : 160;
 
+  // 指標只算一次：給 useEffect（畫圖）與 render（狀態判斷面板）共用
+  const ind = useMemo(
+    () => computeIndicators(data, { jEntry, jExit, strategyMode }),
+    [data, jEntry, jExit, strategyMode]
+  );
+
   useEffect(() => {
     if (!data.length || !chartRef.current || !kdjRef.current) return;
     if (chartInstance.current) { chartInstance.current.remove(); chartInstance.current = null; }
     if (kdjInstance.current) { kdjInstance.current.remove(); kdjInstance.current = null; }
 
-    const closes = data.map(d => d.close);
-    const highs  = data.map(d => d.high);
-    const lows   = data.map(d => d.low);
-    const bb = calcBB(closes);
-    const kdj = calcKDJ(closes, highs, lows);
-    const signals = checkSignals(closes, bb, kdj, jEntry, jExit, strategyMode);
+    const { bb, kdj, signals } = ind;
 
     const chartOpts = {
       layout: { background: { color: C.surface2 }, textColor: C.textMuted },
@@ -480,19 +448,14 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
   // winWidth 變化時重建圖表以套用新高度；tickerConfig 變化時重繪再平衡執行標記
   }, [data, jEntry, jExit, chartH, kdjH, tickerConfig, currentDrift]);
 
-  const closes = data.map(d => d.close);
-  const highs  = data.map(d => d.high);
-  const lows   = data.map(d => d.low);
-  const bb = calcBB(closes);
-  const kdj = calcKDJ(closes, highs, lows);
+  const { closes, bb, kdj, signals: _signals } = ind;
   const lastBB = bb[bb.length-1];
   const lastKDJ = kdj[kdj.length-1];
   const lastClose = closes[closes.length-1];
 
   // ── 兩步驟訊號集合（用於 P-007 signalActive 判斷，對齊 checkSignals 邏輯）
-  const _signals  = checkSignals(closes, bb, kdj, jEntry, jExit, strategyMode);
-  const _buySigs  = new Set(_signals.filter(s => s.type === 'BUY').map(s => s.index));
-  const _sellSigs = new Set(_signals.filter(s => s.type === 'SELL').map(s => s.index));
+  const _buySigs  = useMemo(() => new Set(_signals.filter(s => s.type === 'BUY').map(s => s.index)), [_signals]);
+  const _sellSigs = useMemo(() => new Set(_signals.filter(s => s.type === 'SELL').map(s => s.index)), [_signals]);
   const _lastIdx  = closes.length - 1;
 
   let status = '正常', statusColor = C.textMuted;
@@ -1185,16 +1148,15 @@ function BacktestTab() {
     const startVal = equityValues[0];
     const endVal = equityValues[equityValues.length - 1];
     const totalReturn = (endVal - startVal) / startVal;
-    const annReturn = Math.pow(1 + totalReturn, 252 / tradingDays) - 1;
+    const annReturn = Math.pow(1 + totalReturn, TRADING_DAYS_PER_YEAR / tradingDays) - 1;
     const dailyReturns = [];
     for (let i = 1; i < equityValues.length; i++) {
       dailyReturns.push((equityValues[i] - equityValues[i-1]) / equityValues[i-1]);
     }
     const avgDailyRet = dailyReturns.reduce((a,b)=>a+b,0) / dailyReturns.length;
     const variance = dailyReturns.reduce((a,b)=>a+Math.pow(b-avgDailyRet,2),0) / dailyReturns.length;
-    const annVol = Math.sqrt(variance * 252);
-    const riskFreeRate = 0.02;
-    const sharpe = annVol > 0 ? (annReturn - riskFreeRate) / annVol : 0;
+    const annVol = Math.sqrt(variance * TRADING_DAYS_PER_YEAR);
+    const sharpe = annVol > 0 ? (annReturn - RISK_FREE_RATE) / annVol : 0;
     let winRate;
     if (bmValues && bmValues.length === equityValues.length) {
       winRate = equityValues.filter((v, i) => v > bmValues[i]).length / equityValues.length * 100;
@@ -1265,7 +1227,7 @@ function BacktestTab() {
         if (buySigs.has(i)) return true;
         return Math.abs((shares*price)/total*100 - cp.target*100) >= cp.drift_pct;
       }) : null;
-      const annualR = sel.annual ? sr((i) => i % 252 === 0) : null;
+      const annualR = sel.annual ? sr((i) => i % TRADING_DAYS_PER_YEAR === 0) : null;
       const p007R   = sel.p007   ? sr((i, total, shares, price) => {
         const actualPct = (shares*price)/total*100;
         const targetPct = cp.target*100;
@@ -1324,7 +1286,7 @@ function BacktestTab() {
         label: COMBO_LABELS[ci], comboIdx: ci, params: { ...cp },
         alignedRaw, alignedBmRaw,
         actualStart, actualEnd, tradingDays,
-        isDataShort: (cp.days - Math.round(tradingDays * 365 / 252)) > 90,
+        isDataShort: (cp.days - Math.round(tradingDays * 365 / TRADING_DAYS_PER_YEAR)) > 90,
         signalR, periodR, driftR, asymR, annualR, p007R,
         signalReturn: calcRet(signalR), periodReturn: calcRet(periodR),
         driftReturn:  calcRet(driftR),  asymReturn:   calcRet(asymR),
