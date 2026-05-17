@@ -1,39 +1,13 @@
 // ============================================================
 // strategy/ui.jsx — Strategy 模組內部專用 UI 元件
-// 視覺刻意與全域 src/components/ui/ 不同（更小邊距/字級），
-// 因此保留為模組私有，不混入共用元件庫。
+// Btn 與 Input 因簽名/字級與共用元件差異較大，保留模組私有。
+// Card 與 Badge 已改用 src/components/ui/。
 // ============================================================
 
-import { C, SH } from "../constants/theme";
+import { C } from "../constants/theme";
 
 export const fmt = (n, d = 0) =>
   Math.abs(n).toLocaleString("zh-TW", { maximumFractionDigits: d });
-
-export function Card({ children, style = {} }) {
-  return (
-    <div style={{
-      background: `linear-gradient(150deg, ${C.surface} 0%, ${C.surface2} 100%)`,
-      border: `1px solid ${C.border}`,
-      borderRadius: 14,
-      boxShadow: SH.sm,
-      ...style,
-    }}>{children}</div>
-  );
-}
-
-export function Badge({ text, color = C.accent }) {
-  return (
-    <span style={{
-      background: color + "20",
-      color,
-      border: `1px solid ${color}40`,
-      borderRadius: 5,
-      padding: "2px 8px",
-      fontSize: 11,
-      fontWeight: 600,
-    }}>{text}</span>
-  );
-}
 
 export function Btn({ children, onClick, color = C.accent, style = {} }) {
   return (

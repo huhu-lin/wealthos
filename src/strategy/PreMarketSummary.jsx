@@ -5,7 +5,8 @@
 
 import { C } from "../constants/theme";
 import { computeIndicators } from "../utils/strategyIndicators";
-import { Card, Badge } from "./ui";
+import Card from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
 
 export default function PreMarketSummary({ tickers, klineMap, allAssets }) {
 

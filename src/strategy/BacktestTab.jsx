@@ -8,7 +8,8 @@ import { createChart } from "lightweight-charts";
 import { C } from "../constants/theme";
 import { useIsMobile } from "../utils/useBreakpoint";
 import { computeIndicators } from "../utils/strategyIndicators";
-import { Card, Btn, Input, fmt } from "./ui";
+import Card from "../components/ui/Card";
+import { Btn, Input, fmt } from "./ui";
 import { fetchTWKline, fetchUSKline, pollKlineCache, bucketDays } from "./klineApi";
 
 // 共用常數（年化計算 / 風險調整）

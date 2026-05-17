@@ -5,7 +5,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { C } from "../constants/theme";
-import { Card, Btn, Input } from "./ui";
+import Card from "../components/ui/Card";
+import { Btn, Input } from "./ui";
 import { fetchTWKline, fetchUSKline } from "./klineApi";
 import KChart from "./KChart";
 import PreMarketSummary from "./PreMarketSummary";

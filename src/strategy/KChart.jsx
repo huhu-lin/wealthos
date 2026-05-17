@@ -8,7 +8,9 @@ import { createChart } from "lightweight-charts";
 import { C } from "../constants/theme";
 import { useIsMobile } from "../utils/useBreakpoint";
 import { computeIndicators } from "../utils/strategyIndicators";
-import { Card, Badge, fmt } from "./ui";
+import Card from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
+import { fmt } from "./ui";
 
 // ─── 監控策略績效模擬 ─────────────────────────────────────────
 // 從進場日起，模擬嚴格執行策略的績效，用來與實際庫存比較
