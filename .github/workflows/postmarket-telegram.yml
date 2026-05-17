@@ -1,0 +1,33 @@
+name: Post-market Telegram Brief
+
+# 台灣時間週一至週五 15:30（台股 13:30 收盤後）推播盤後總結
+# UTC 07:30 Mon-Fri = TWN 15:30
+# 內容：台股收盤 + 三大法人 + 成交量 + 國際盤 + AI 盤後分析
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"   # UTC 07:30 Mon-Fri = TWN 15:30
+  workflow_dispatch:           # 允許手動觸發（測試用）
+
+jobs:
+  send-postmarket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install yfinance requests --quiet
+
+      - name: Send post-market Telegram brief
+        env:
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          FINMIND_TOKEN:      ${{ secrets.FINMIND_TOKEN }}
+        run: python scripts/postmarket_telegram.py
