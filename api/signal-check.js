@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { calcBB, calcKDJ } from '../src/utils/strategyIndicators.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -64,30 +65,9 @@ async function fetchUSDTWD() {
 }
 
 // ─── 指標計算 ────────────────────────────────────────────────
-
-function calcBB(closes, period=20, mult=2) {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  const mean = slice.reduce((a,b)=>a+b,0)/period;
-  const std = Math.sqrt(slice.reduce((a,b)=>a+(b-mean)**2,0)/period);
-  return { upper: mean+mult*std, lower: mean-mult*std, basis: mean };
-}
-
-// ✅ 修復：KDJ 改用實際 High/Low（與 Strategy.jsx D-001 同步）
-// 原本用 closes 的 max/min 當 High/Low，技術上不正確
-// 現在用真實蠟燭的最高/最低價計算 RSV，與業界標準（TradingView / 台灣券商）一致
-function calcKDJ(closes, highs, lows, period=9) {
-  if (closes.length < period) return null;
-  let k = 50, d = 50;
-  for (let i = period-1; i < closes.length; i++) {
-    const high = Math.max(...highs.slice(i-period+1, i+1));
-    const low  = Math.min(...lows.slice(i-period+1, i+1));
-    const rsv  = high===low ? 50 : (closes[i]-low)/(high-low)*100;
-    k = k*2/3 + rsv/3;
-    d = d*2/3 + k/3;
-  }
-  return { k, d, j: 3*k - 2*d };
-}
+// calcBB / calcKDJ 已從 ../src/utils/strategyIndicators.js 共用
+// 注意：array 版本對每根 K 棒輸出一個物件（或 null），相當於舊版每次
+// 對 prefix 重算的結果，但只算一次 O(n)（舊版為 O(n²)）
 
 /**
  * 掃描整段 OHLCV，旗標跨K棒記憶，回傳「最新一根」是否觸發訊號
@@ -107,25 +87,20 @@ function checkSignal(data, strategyMode='signal', jThresholdEntry=10, jThreshold
   const highs  = data.map(d => d.high);
   const lows   = data.map(d => d.low);
 
+  const bbArr  = calcBB(closes);
+  const kdjArr = calcKDJ(closes, highs, lows);
+
   let jBelowFlag = false;
   let jAboveFlag = false;
   let signal = null;
 
   for (let i = 1; i < data.length; i++) {
-    const closesSlice     = closes.slice(0, i+1);
-    const closesSlicePrev = closes.slice(0, i);
-    const highsSlice      = highs.slice(0, i+1);
-    const highsSlicePrev  = highs.slice(0, i);
-    const lowsSlice       = lows.slice(0, i+1);
-    const lowsSlicePrev   = lows.slice(0, i);
-
-    const bb      = calcBB(closesSlice);
-    const kdj     = calcKDJ(closesSlice, highsSlice, lowsSlice);
-    const prevBB  = calcBB(closesSlicePrev);
-    const prevKDJ = calcKDJ(closesSlicePrev, highsSlicePrev, lowsSlicePrev);
+    const bb      = bbArr[i];
+    const kdj     = kdjArr[i];
+    const prevBB  = bbArr[i-1];
+    const prevKDJ = kdjArr[i-1];
     if (!bb || !kdj || !prevBB || !prevKDJ) continue;
 
-    const price     = closes[i];
     const prevPrice = closes[i-1];
 
     // 買入旗標：所有策略模式都有
@@ -146,11 +121,14 @@ function checkSignal(data, strategyMode='signal', jThresholdEntry=10, jThreshold
     }
   }
 
-  const bb  = calcBB(closes);
-  const kdj = calcKDJ(closes, highs, lows);
-  const price = closes.at(-1);
-
-  return { signal, price, bb, kdj, jBelowFlag, jAboveFlag };
+  return {
+    signal,
+    price: closes.at(-1),
+    bb:    bbArr.at(-1),
+    kdj:   kdjArr.at(-1),
+    jBelowFlag,
+    jAboveFlag,
+  };
 }
 
 // ─── 資產即時估值 ────────────────────────────────────────────
