@@ -96,6 +96,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   const [scenIdx, setScenIdx] = useState(1);       // 預設中性 12%
   const [monthly, setMonthly] = useState(45000);   // 預設 Base 45K/月
   const [swr,     setSwr]     = useState(0.030);   // 預設 3%（33歲適合）
+  const [subTab,  setSubTab]  = useState("dashboard"); // "dashboard" | "cashflow"
 
   const scen    = SCENARIOS[scenIdx];
   const mode    = resolveMode(monthly);
@@ -240,6 +241,27 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
   return (
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      {/* ── 子分頁切換 ──────────────────────────────────────── */}
+      <div style={{
+        display: "flex", gap: 6, alignItems: "center",
+        paddingBottom: 4, borderBottom: `1px solid ${C.border}`,
+      }}>
+        <CtrlBtn active={subTab === "dashboard"} color={C.accent}
+          onClick={() => setSubTab("dashboard")}>
+          📊 FIRE 儀表板
+        </CtrlBtn>
+        <CtrlBtn active={subTab === "cashflow"} color={C.blue}
+          onClick={() => setSubTab("cashflow")}>
+          💰 現金流紀錄
+        </CtrlBtn>
+      </div>
+
+      {subTab === "cashflow" && (
+        <CashflowManager cashflow={cashflow} reload={reload} />
+      )}
+
+      {subTab === "dashboard" && (<>
 
       {/* ── P-007 訊號 Banner ────────────────────────────────── */}
       {signalState.type !== "NEUTRAL" && (() => {
@@ -574,8 +596,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         </div>
       </div>
 
-      {/* ── 現金流月度紀錄管理 ─────────────────────────────── */}
-      <CashflowManager cashflow={cashflow} reload={reload} />
+      </>)}
     </div>
   );
 }
