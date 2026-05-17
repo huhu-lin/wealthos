@@ -1,18 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-
-// ─── RWD Hook：監聽視窗寬度，回傳數字供各元件判斷 breakpoint ──
-function useWindowWidth() {
-  const [width, setWidth] = useState(window.innerWidth);
-  useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return width;
-}
 import { createChart } from "lightweight-charts";
 import { supabase } from "./supabase";
 import { C, SH } from "./constants/theme";
+import { useIsMobile } from "./utils/useBreakpoint";
 
 const fmt = (n, d=0) => Math.abs(n).toLocaleString("zh-TW", {maximumFractionDigits:d});
 
@@ -359,8 +349,7 @@ function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, s
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
   const kdjInstance = useRef(null);
-  const winWidth = useWindowWidth();
-  const isMobile = winWidth <= 480;
+  const isMobile = useIsMobile();
   const chartH = isMobile ? 220 : 320;
   const kdjH   = isMobile ? 120 : 160;
 
@@ -1111,8 +1100,7 @@ function MonitorTab({ allAssets }) {
 
 // ─── 回測 Tab ────────────────────────────────────────────────
 function BacktestTab() {
-  const winWidth = useWindowWidth();
-  const isMobile = winWidth <= 480;
+  const isMobile = useIsMobile();
 
   const MAX_COMBOS = 4;
   const COMBO_LABELS = ["A","B","C","D"];

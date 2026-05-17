@@ -11,8 +11,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "./supabase";
-import { C, fmt } from "./constants/theme";
+import { C, BP, fmt } from "./constants/theme";
 import { fetchUSDTWD } from "./utils/priceApi";
+import { useWindowWidth } from "./utils/useBreakpoint";
 
 // ── 頁面元件 ──────────────────────────────────────────────
 import GlobalStyles  from "./components/ui/GlobalStyles";
@@ -41,20 +42,10 @@ const TABS = [
   { id: "fire",     label: "FIRE", icon: "🔥" },
 ];
 
-// ── RWD Hook（本地定義，避免跨模組依賴）────────────────────
-function useWindowWidth() {
-  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1280);
-  useEffect(() => {
-    const handler = () => setWidth(window.innerWidth);
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, []);
-  return width;
-}
-
 export default function App() {
   const winWidth  = useWindowWidth();
-  const isMobile  = winWidth <= 600;
+  // Header 較密，採用較早的 600px 斷點（其他頁面用 BP.mobile = 480）
+  const isMobile  = winWidth <= BP.header;
 
   // ── Auth 狀態 ─────────────────────────────────────────────
   const [session,     setSession]     = useState(undefined); // undefined = 初始化中, null = 未登入
