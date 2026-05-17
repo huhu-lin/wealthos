@@ -12,6 +12,8 @@ from datetime import datetime, timezone, timedelta
 import yfinance as yf
 import requests
 
+from news_sources import fetch_market_news, format_news_block, top_news_links
+
 # ── 時區常數 ──────────────────────────────────────────────────
 TWN = timezone(timedelta(hours=8))
 
@@ -134,17 +136,6 @@ def get_institutional():
         print(f"  ❌ 三大法人：{e}")
         return None
 
-# ── 鉅亨網新聞 ────────────────────────────────────────────────
-def get_news(category, limit=4):
-    url = f"https://news.cnyes.com/api/v3/news/category/{category}?limit={limit}"
-    try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        items = r.json().get("items", {}).get("data", [])
-        return [{"title": d.get("title", "")} for d in items]
-    except Exception as e:
-        print(f"  ❌ 新聞 {category}: {e}")
-        return []
-
 # ── Gemini 生成摘要 ──────────────────────────────────────────
 def fmt_pair(d, unit=""):
     if not d or d.get("value") is None: return "N/A"
@@ -152,8 +143,7 @@ def fmt_pair(d, unit=""):
     chg_str = f" ({chg:+.2f}%)" if chg is not None else ""
     return f"{d['value']}{unit}{chg_str}"
 
-def generate_summary(mkt, vol, inst, tw_news):
-    tw_titles = "\n".join([f"- {n['title']}" for n in tw_news[:5]]) or "（無）"
+def generate_summary(mkt, vol, inst, news_grouped):
     inst_text = "N/A"
     if inst:
         inst_text = (
@@ -163,11 +153,15 @@ def generate_summary(mkt, vol, inst, tw_news):
             f"合計 {inst.get('total')} 億"
         )
     vol_text = f"{vol['value']} 億" if vol and vol.get("value") is not None else "N/A"
+    news_block = format_news_block(news_grouped)
 
     prompt = f"""你是一位台灣資深財經分析師，請根據以下今日台股盤後數據撰寫「盤後總結」，繁體中文約 200 字。
+
+【使用者投資偏好】市值型/大盤 ETF。請以「大盤、ETF、權值股（台積電/鴻海/聯發科/台達電/廣達/富邦金/中信金 等）動向」為分析重心；個股新聞僅在判斷其對加權指數有顯著拉抬或拖累時提及，否則略過。
+
 要求：
 1. 第一句點出今日台股漲跌方向與關鍵驅動力（成交量、法人態度、產業）。
-2. 用 2~3 句連貫敘述：法人買賣超意涵、成交量解讀、與國際盤面對照。
+2. 用 2~3 句連貫敘述：法人買賣超意涵、成交量解讀、與國際盤面對照，並結合新聞中與大盤/權值股相關的訊息。
 3. 最後一句點出明日盤前需特別觀察的事件或風險。
 語氣專業簡潔、直接輸出內文，不需標題或條列。
 【注意】只分析市場環境，不得建議具體買賣標的。
@@ -189,8 +183,7 @@ def generate_summary(mkt, vol, inst, tw_news):
 【匯率】
 - USD/TWD：{fmt_pair(mkt.get('usdtwd'))}
 
-【今日台股重點新聞】
-{tw_titles}"""
+{news_block}"""
 
     models = [
         "gemini-2.5-flash",
@@ -258,12 +251,11 @@ vol = get_taiex_volume()
 print("\n【步驟 3】抓取三大法人")
 inst = get_institutional()
 
-print("\n【步驟 4】抓取新聞")
-tw_news = get_news("tw_stock", 5)
-print(f"  台股新聞：{len(tw_news)} 則")
+print("\n【步驟 4】抓取多來源新聞（24h 內，鉅亨網 + UDN money）")
+news_grouped = fetch_market_news("postmarket")
 
 print("\n【步驟 5】Gemini 生成盤後總結")
-summary = generate_summary(mkt, vol, inst, tw_news)
+summary = generate_summary(mkt, vol, inst, news_grouped)
 
 print("\n【步驟 6】組合 Telegram 訊息")
 lines = [
@@ -295,7 +287,19 @@ if summary:
 else:
     lines += ["", "<i>⚠️  AI 摘要生成失敗，僅推送原始數據</i>"]
 
-lines += ["", "<i>資料來源：yfinance / FinMind / 鉅亨網</i>"]
+top_links = top_news_links(news_grouped, n=5)
+if top_links:
+    lines += ["", "<b>📰 重點新聞（24h 內最新）</b>"]
+    for n in top_links:
+        title = (n.get("title") or "").replace("<", "&lt;").replace(">", "&gt;")
+        url   = n.get("url") or ""
+        src   = n.get("source") or ""
+        if url:
+            lines.append(f"• <a href=\"{url}\">[{src}] {title}</a>")
+        else:
+            lines.append(f"• [{src}] {title}")
+
+lines += ["", "<i>資料來源：yfinance / FinMind / 鉅亨網 / 經濟日報</i>"]
 
 message = "\n".join(lines)
 if len(message) > 4000:
