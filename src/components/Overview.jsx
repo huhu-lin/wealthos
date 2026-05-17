@@ -26,7 +26,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
 
-import { C, TT, SH, fmt, fmtM, pct } from "../constants/theme";
+import { C, T, S, TT, SH, fmt, fmtM, pct } from "../constants/theme";
 import Card        from "./ui/Card";
 import KPI         from "./ui/KPI";
 import MarketBrief from "./MarketBrief";
@@ -244,13 +244,13 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
           pointerEvents: "none",
         }} />
 
-        <div style={{ color: C.textMuted, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, marginBottom: 6 }}>
+        <div style={{ ...T.label, color: C.textMuted, marginBottom: S.sm - 2 }}>
           TOTAL NET WORTH
         </div>
         {/* 淨值大數字（桌機 36px / 手機 26px）*/}
         <div style={{
+          ...T.mono,
           color: C.accent, fontSize: isMobile ? 26 : 36, fontWeight: 700,
-          fontFamily: "'JetBrains Mono', monospace",
           letterSpacing: "-0.03em", lineHeight: 1.1,
         }}>
           NT${fmt(netWorth)}
@@ -308,7 +308,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
                 onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                  <div style={{ color: C.textMuted, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>
+                  <div style={{ ...T.label, fontSize: 10, color: C.textMuted }}>
                     {icon} {label}
                   </div>
                   {histLen > 0 && (
@@ -317,7 +317,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
                 </div>
                 {hasData ? (
                   <>
-                    <div style={{ color, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>
+                    <div style={{ ...T.mono, color, fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>
                       {isPos ? "+" : ""}NT${fmt(Math.abs(delta))}
                     </div>
                     <div style={{ color, fontSize: 11, marginTop: 3, fontWeight: 600 }}>
@@ -361,7 +361,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
               {onTabChange && <span style={{ color: x.color, fontSize: 9, marginLeft: 4, opacity: 0.7 }}>›</span>}
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: x.color, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 14 }}>
+              <div style={{ ...T.mono, color: x.color, fontWeight: 700, fontSize: 14 }}>
                 NT${fmt(x.value)}
               </div>
               <div style={{ color: C.textDim, fontSize: 10, marginTop: 2 }}>
@@ -516,12 +516,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
                         </div>
                         {/* 右：損益 */}
                         <div style={{ textAlign: "right" }}>
-                          <div style={{
-                            color,
-                            fontFamily: "'JetBrains Mono', monospace",
-                            fontWeight: 700,
-                            fontSize: 13,
-                          }}>
+                          <div style={{ ...T.mono, color, fontWeight: 700, fontSize: 13 }}>
                             {isPos ? "+" : ""}NT${fmt(Math.abs(r.delta))}
                           </div>
                           <div style={{ color, fontSize: 11, marginTop: 2 }}>
