@@ -19,26 +19,18 @@ import { useWindowWidth } from "./utils/useBreakpoint";
 import GlobalStyles  from "./components/ui/GlobalStyles";
 import TabBtn        from "./components/ui/TabBtn";
 import Overview      from "./components/Overview";
-import TWAccount     from "./components/TWAccount";
-import USAccount     from "./components/USAccount";
-import CryptoAccount from "./components/CryptoAccount";
-import OtherAccount  from "./components/OtherAccount";
+import AssetsTab     from "./AssetsTab";
 import Liabilities   from "./components/Liabilities";
-import Pledge        from "./components/Pledge";
 import Strategy      from "./Strategy";
 import FireDashboard from "./components/FireDashboard";
 import LoginPage     from "./components/LoginPage";
 
 // ── Tab 清單（id 對應路由、label 顯示名稱、icon 圖示）──────
 const TABS = [
-  { id: "overview", label: "總覽", icon: "◎" },
-  { id: "strategy", label: "策略", icon: "📈" },  // C-006: 核心功能移至第二位
-  { id: "tw",       label: "台股", icon: "🇹🇼" },
-  { id: "us",       label: "美股", icon: "🇺🇸" },
-  { id: "crypto",   label: "加密", icon: "₿" },
-  { id: "other",    label: "其他", icon: "🏠" },
+  { id: "overview", label: "總覽", icon: "◎"  },
+  { id: "assets",   label: "資產", icon: "💼"  },
   { id: "liab",     label: "負債", icon: "📋" },
-  { id: "pledge",   label: "質押", icon: "🔒" },
+  { id: "strategy", label: "策略", icon: "📈" },
   { id: "fire",     label: "FIRE", icon: "🔥" },
 ];
 
@@ -374,13 +366,15 @@ export default function App() {
               onTabChange={setTab}
             />
           )}
-          {tab === "tw"       && <TWAccount     assets={twAssets}     reload={load} />}
-          {tab === "us"       && <USAccount     assets={usAssets}     usdRate={usdRate} reload={load} />}
-          {tab === "crypto"   && <CryptoAccount assets={cryptoAssets} reload={load} />}
-          {tab === "other"    && <OtherAccount  assets={otherAssets}  reload={load} />}
-          {tab === "liab"     && <Liabilities   liabilities={liabilities} reload={load} />}
-          {tab === "pledge"   && <Pledge        pledges={pledges}     reload={load} />}
-          {tab === "strategy" && <Strategy      allAssets={allAssets} />}
+          {tab === "assets"   && (
+            <AssetsTab
+              twAssets={twAssets} usAssets={usAssets}
+              cryptoAssets={cryptoAssets} otherAssets={otherAssets}
+              usdRate={usdRate} reload={load}
+            />
+          )}
+          {tab === "liab"     && <Liabilities liabilities={liabilities} pledges={pledges} reload={load} />}
+          {tab === "strategy" && <Strategy    allAssets={allAssets} />}
           {tab === "fire"     && <FireDashboard allAssets={allAssets} liabilities={liabilities} cashflow={cashflow} strategies={strategies} reload={load} />}
         </div>
       </div>

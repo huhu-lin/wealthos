@@ -16,6 +16,8 @@ import KPI from "./ui/KPI";
 import { Inp, Sel, Btn } from "./ui/FormControls";
 import Modal from "./ui/Modal";
 import { Badge, SectionHeader } from "./ui/Badge";
+import TabBtn from "./ui/TabBtn";
+import Pledge from "./Pledge";
 
 // ── 常數 ─────────────────────────────────────────────────────
 const LIAB_CATS   = ["長期負債", "質押", "信用卡", "房貸", "其他"];
@@ -200,7 +202,8 @@ function PayoffTimeline({ liabilities }) {
 }
 
 // ── 主元件 ───────────────────────────────────────────────────
-export default function Liabilities({ liabilities, reload }) {
+export default function Liabilities({ liabilities, pledges, reload }) {
+  const [sub,        setSub]        = useState("liab");
   const [modal,      setModal]      = useState(null);
   const [form,       setForm]       = useState(emptyLiab);
   const [saving,     setSaving]     = useState(false);
@@ -342,6 +345,20 @@ export default function Liabilities({ liabilities, reload }) {
   return (
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
+      {/* ── 子分頁導覽列 ─────────────────────────────────── */}
+      <div style={{
+        display: "flex", gap: 6,
+        paddingBottom: 12, marginBottom: 4,
+        borderBottom: `1px solid ${C.border}`,
+      }}>
+        {[{ id: "liab", label: "負債清單", icon: "📋" }, { id: "pledge", label: "質押管理", icon: "🔒" }].map(t => (
+          <TabBtn key={t.id} {...t} active={sub === t.id} onClick={() => setSub(t.id)} />
+        ))}
+      </div>
+
+      {sub === "pledge" && <Pledge pledges={pledges} reload={reload} />}
+
+      {sub === "liab" && <>
       {/* ── KPI ──────────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <KPI label="總負債"    value={total}        color={C.red} />
@@ -487,6 +504,7 @@ export default function Liabilities({ liabilities, reload }) {
           </div>
         </Modal>
       )}
+      </>}
     </div>
   );
 }
