@@ -226,10 +226,9 @@ export default function MonitorTab({ allAssets }) {
                 gatePct={t.gate_pct||13}
                 tickerConfig={t}
                 currentDrift={_drift}
-                onRecordRebal={async () => {
-                  const today = new Date().toISOString().slice(0, 10);
+                onRecordRebal={async (rebalDate) => {
                   await supabase.from('strategy_tickers')
-                    .update({ last_rebalance_date: today })
+                    .update({ last_rebalance_date: rebalDate })
                     .eq('id', t.id);
                   await loadTickers();
                 }}
