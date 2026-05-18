@@ -74,7 +74,7 @@ export function calcMonitorPerformance(klineData, { amount, target, j_entry, j_e
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
-export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13, tickerConfig=null, currentDrift=0 }) {
+export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13, tickerConfig=null, currentDrift=0, onRecordRebal=null }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -155,9 +155,25 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
           position: e.type === 'BUY' ? 'belowBar' : 'aboveBar',
           color:    '#FFD700',
           shape:    'circle',
-          text:     e.type === 'BUY' ? '✓買' : '✓賣',
+          text:     e.type === 'BUY' ? '○買' : '○賣',
         }));
         allMarkers = [...allMarkers, ...execMarkers];
+      }
+    }
+
+    // DB 持久化執行點：覆蓋同日的觸發圈，改為綠色確認圈（✓）
+    if (tickerConfig?.last_rebalance_date) {
+      const rebalDate = tickerConfig.last_rebalance_date;
+      if (data.some(d => d.date === rebalDate)) {
+        allMarkers = allMarkers.filter(m => !(m.time === rebalDate && m.shape === 'circle'));
+        const rebalSig = signals.find(s => data[s.index]?.date === rebalDate);
+        allMarkers.push({
+          time:     rebalDate,
+          position: rebalSig?.type === 'BUY' ? 'belowBar' : 'aboveBar',
+          color:    C.accent,
+          shape:    'circle',
+          text:     rebalSig?.type === 'BUY' ? '✓買' : '✓賣',
+        });
       }
     }
 
@@ -174,7 +190,7 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
             position: lastSig.type === 'BUY' ? 'belowBar' : 'aboveBar',
             color:    '#FFD700',
             shape:    'circle',
-            text:     lastSig.type === 'BUY' ? '✓買' : '✓賣',
+            text:     lastSig.type === 'BUY' ? '○買' : '○賣',
           });
         }
       }
@@ -274,7 +290,17 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
               <span style={{color:C.textMuted}}>訊號 <span style={{color:signalActive?C.accent:C.textMuted, fontWeight:600}}>{signalActive?'✅ 成立':'⏳ 等待'}</span></span>
               <span style={{color:C.textMuted}}>偏離 <span style={{color:driftMet?"#FFD700":C.textMuted, fontWeight:600}}>{driftNow.toFixed(1)}%</span> / gate <span style={{fontWeight:600}}>{gatePct}%</span></span>
               {bothMet ? (
-                <span style={{color:C.accent, fontWeight:700}}>🎯 P-007 觸發！<span style={{color:diffAmt>0?C.accent:C.red}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
+                <>
+                  <span style={{color:C.accent, fontWeight:700}}>🎯 P-007 觸發！<span style={{color:diffAmt>0?C.accent:C.red}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
+                  {onRecordRebal && (
+                    <button
+                      onClick={onRecordRebal}
+                      style={{padding:"2px 10px", fontSize:11, background:C.accent+"20", border:`1px solid ${C.accent}`, borderRadius:4, color:C.accent, cursor:"pointer"}}
+                    >
+                      ✅ 記錄已執行
+                    </button>
+                  )}
+                </>
               ) : signalActive ? (
                 <span style={{color:C.red}}>⚠️ 今日訊號成立，但偏離僅 {driftNow.toFixed(1)}%（未達 gate {gatePct}%），本次訊號失效</span>
               ) : driftMet ? (
