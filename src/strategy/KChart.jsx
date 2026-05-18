@@ -283,18 +283,22 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
           const bothMet  = signalActive && driftMet;
           const borderCol = bothMet ? C.accent+"60" : (signalActive || driftMet) ? "#FFD70060" : C.border;
           const gapDrift  = Math.max(0, gatePct - driftNow);
+          const lastBarDate = data[data.length - 1]?.date;
+          const alreadyRecorded = tickerConfig?.last_rebalance_date === lastBarDate;
           return (
             <div style={{display:"flex", gap:12, flexWrap:"wrap", marginBottom:12, padding:"10px 14px", background:C.surface, borderRadius:8, border:`1px solid ${borderCol}`, fontSize:12}}>
               <span style={{color:C.textMuted}}>實際佔比 <span style={{color:C.text, fontWeight:600}}>{actualPct.toFixed(1)}%</span></span>
               <span style={{color:C.textMuted}}>目標佔比 <span style={{color:C.text, fontWeight:600}}>{targetPct.toFixed(1)}%</span></span>
               <span style={{color:C.textMuted}}>訊號 <span style={{color:signalActive?C.accent:C.textMuted, fontWeight:600}}>{signalActive?'✅ 成立':'⏳ 等待'}</span></span>
               <span style={{color:C.textMuted}}>偏離 <span style={{color:driftMet?"#FFD700":C.textMuted, fontWeight:600}}>{driftNow.toFixed(1)}%</span> / gate <span style={{fontWeight:600}}>{gatePct}%</span></span>
-              {bothMet ? (
+              {alreadyRecorded ? (
+                <span style={{color:C.accent, fontWeight:700}}>✅ 已記錄執行（{lastBarDate}）</span>
+              ) : bothMet ? (
                 <>
                   <span style={{color:C.accent, fontWeight:700}}>🎯 P-007 觸發！<span style={{color:diffAmt>0?C.accent:C.red}}>{diffAmt>0?' 買入':' 賣出'} NT${fmt(Math.abs(diffAmt))}</span></span>
-                  {onRecordRebal && (
+                  {onRecordRebal && lastBarDate && (
                     <button
-                      onClick={onRecordRebal}
+                      onClick={() => onRecordRebal(lastBarDate)}
                       style={{padding:"2px 10px", fontSize:11, background:C.accent+"20", border:`1px solid ${C.accent}`, borderRadius:4, color:C.accent, cursor:"pointer"}}
                     >
                       ✅ 記錄已執行
@@ -302,7 +306,17 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
                   )}
                 </>
               ) : signalActive ? (
-                <span style={{color:C.red}}>⚠️ 今日訊號成立，但偏離僅 {driftNow.toFixed(1)}%（未達 gate {gatePct}%），本次訊號失效</span>
+                <>
+                  <span style={{color:C.gold}}>✅ 訊號成立（偏離 {driftNow.toFixed(1)}%）— 若已手動執行請點記錄</span>
+                  {onRecordRebal && lastBarDate && (
+                    <button
+                      onClick={() => onRecordRebal(lastBarDate)}
+                      style={{padding:"2px 10px", fontSize:11, background:C.accent+"20", border:`1px solid ${C.accent}`, borderRadius:4, color:C.accent, cursor:"pointer"}}
+                    >
+                      ✅ 記錄已執行
+                    </button>
+                  )}
+                </>
               ) : driftMet ? (
                 <span style={{color:C.blue}}>📊 偏離達標，等待訊號</span>
               ) : (
@@ -434,9 +448,14 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
           </div>
         ))}
         {tickerConfig?.entry_date && tickerConfig?.amount && (
-          <div style={{display:"flex", alignItems:"center", gap:4}}>
-            <div style={{width:8, height:8, borderRadius:"50%", background:"#FFD700"}}/><span style={{color:C.textMuted}}>再平衡執行</span>
-          </div>
+          <>
+            <div style={{display:"flex", alignItems:"center", gap:4}}>
+              <div style={{width:8, height:8, borderRadius:"50%", border:"1.5px solid #FFD700", background:"transparent"}}/><span style={{color:C.textMuted}}>觸發未執行</span>
+            </div>
+            <div style={{display:"flex", alignItems:"center", gap:4}}>
+              <div style={{width:8, height:8, borderRadius:"50%", background:C.accent}}/><span style={{color:C.textMuted}}>已執行</span>
+            </div>
+          </>
         )}
       </div>
       <div ref={kdjRef} style={{width:"100%", borderRadius:8, overflow:"hidden"}}/>
