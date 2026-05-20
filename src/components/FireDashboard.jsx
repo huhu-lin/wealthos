@@ -31,11 +31,6 @@ const FIRE_MODES = [
   { key: "fat",  label: "舒適", monthly: 60000, color: C.purple, dash: "14 4"  },
 ];
 
-const CURVE_KEYS = [
-  { key: "c7",  color: C.blue,   scenLabel: "保守 7%"  },
-  { key: "c12", color: C.gold,   scenLabel: "中性 12%" },
-  { key: "c18", color: C.accent, scenLabel: "積極 18%" },
-];
 
 const MONTHLY_MIN  = 20000;
 const MONTHLY_MAX  = 100000;
@@ -99,12 +94,13 @@ function CtrlBtn({ active, color, onClick, children, small }) {
 }
 
 export default function FireDashboard({ allAssets, liabilities, cashflow = [], strategies = [], reload }) {
-  const [scenIdx, setScenIdx] = useState(1);       // 預設中性 12%
+  const [rate,    setRate]    = useState(0.12);     // 預設中性 12%
   const [monthly, setMonthly] = useState(45000);   // 預設 Base 45K/月
   const [swr,     setSwr]     = useState(0.030);   // 預設 3%（33歲適合）
   const [subTab,  setSubTab]  = useState("dashboard"); // "dashboard" | "cashflow"
 
-  const scen    = SCENARIOS[scenIdx];
+  const scen    = SCENARIOS.find(s => s.rate === rate)
+                ?? { id: "custom", label: `自訂 ${(rate * 100).toFixed(1)}%`, rate, color: C.text };
   const mode    = resolveMode(monthly);
   const swrOpt  = SWR_OPTIONS.find(o => o.value === swr);
   const fireNum = Math.round(monthly * 12 / swr);
@@ -145,17 +141,14 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
   // ── 核心指標 ─────────────────────────────────────────────────
   const metrics = useMemo(() => {
-    const rate         = scen.rate;
     const annualReturn = totalAssets * rate;
     const modeAnnual   = monthly * 12;
     const workOptional = annualReturn / modeAnnual;
 
-    // Coast FIRE：滾到選定 FIRE 數的年數
     const coastYears = totalAssets >= fireNum
       ? 0
       : Math.log(fireNum / totalAssets) / Math.log(1 + rate);
 
-    // 加權借款成本
     const { credit, pledge } = loans;
     const totalBorrow  = (credit.value || 0) + (pledge.value || 0);
     const weightedCost = totalBorrow > 0
@@ -167,24 +160,28 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       annualReturn,
       modeAnnual,
       workOptional,
-      dynamicWithdrawal: totalAssets * swr / 12,  // 用選定 SWR
+      dynamicWithdrawal: totalAssets * swr / 12,
       coastYears,
       weightedCost,
       arbitrage: rate - weightedCost,
     };
-  }, [totalAssets, scen, monthly, fireNum, swr, loans]);
+  }, [totalAssets, rate, monthly, fireNum, swr, loans]);
 
   // ── 三情境成長圖（年存款優先用實際，否則 18萬）────────────
   const annualContrib = cashflowStats?.annualSavings ?? 180000;
   const chartData = useMemo(() => {
-    const curves = SCENARIOS.map(s => growthCurve(totalAssets, s.rate, annualContrib, 25));
-    return curves[0].map((p, i) => ({
-      year: p.year,
-      c7:  curves[0][i].value,
-      c12: curves[1][i].value,
-      c18: curves[2][i].value,
+    const c7   = growthCurve(totalAssets, 0.07, annualContrib, 25);
+    const c12  = growthCurve(totalAssets, 0.12, annualContrib, 25);
+    const c18  = growthCurve(totalAssets, 0.18, annualContrib, 25);
+    const cust = growthCurve(totalAssets, rate,  annualContrib, 25);
+    return c7.map((p, i) => ({
+      year:    p.year,
+      c7:      c7[i].value,
+      c12:     c12[i].value,
+      c18:     c18[i].value,
+      cCustom: cust[i].value,
     }));
-  }, [totalAssets, annualContrib]);
+  }, [totalAssets, annualContrib, rate]);
 
   // ── 三模式快捷點 + 自訂目標 × 目前 SWR 進度條 ──────────────
   const fireProgress = useMemo(() => {
@@ -193,28 +190,25 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       const pct       = Math.min(totalAssets / target, 1);
       const remaining = Math.max(target - totalAssets, 0);
       const yearsLeft = remaining > 0
-        ? Math.log(target / totalAssets) / Math.log(1 + scen.rate)
+        ? Math.log(target / totalAssets) / Math.log(1 + rate)
         : 0;
       return { ...m, target, pct, remaining, yearsLeft };
     });
-    // 若滑桿值不在三個快捷點上，額外追加一條「目前目標」
     if (!FIRE_MODES.some(m => m.monthly === monthly)) {
       const target    = Math.round(monthly * 12 / swr);
       const pct       = Math.min(totalAssets / target, 1);
       const remaining = Math.max(target - totalAssets, 0);
       const yearsLeft = remaining > 0
-        ? Math.log(target / totalAssets) / Math.log(1 + scen.rate)
+        ? Math.log(target / totalAssets) / Math.log(1 + rate)
         : 0;
       base.push({ key: "custom", label: "自訂", monthly, color: C.gold, dash: "6 2 2 2", target, pct, remaining, yearsLeft });
     }
     return base;
-  }, [totalAssets, scen, swr, monthly]);
+  }, [totalAssets, rate, swr, monthly]);
 
   const fireCrossings = useMemo(() => {
-    return CURVE_KEYS.flatMap(sc => {
-      const hit = chartData.find(d => d[sc.key] >= fireNum);
-      return hit ? [{ year: hit.year, value: hit[sc.key], curveColor: sc.color, scenLabel: sc.scenLabel }] : [];
-    });
+    const hit = chartData.find(d => d.cCustom >= fireNum);
+    return hit ? [{ year: hit.year, value: hit.cCustom }] : [];
   }, [chartData, fireNum]);
 
   // ── 策略訊號狀態（P-007 聯動）────────────────────────────
@@ -239,18 +233,18 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
   // 保守情境（用於賣訊比較）
   const conservativeMetrics = useMemo(() => {
-    const rate         = SCENARIOS[0].rate; // 7%
-    const modeAnnual   = monthly * 12;
+    const conservRate    = SCENARIOS[0].rate; // 7%
+    const modeAnnual     = monthly * 12;
     const conservFireNum = Math.round(monthly * 12 / swr);
-    const coastYears   = totalAssets >= conservFireNum ? 0
-      : Math.log(conservFireNum / totalAssets) / Math.log(1 + rate);
+    const coastYears     = totalAssets >= conservFireNum ? 0
+      : Math.log(conservFireNum / totalAssets) / Math.log(1 + conservRate);
     return {
-      workOptional: (totalAssets * rate) / modeAnnual,
+      workOptional: (totalAssets * conservRate) / modeAnnual,
       coastYears,
       dynamicWithdrawal: totalAssets * swr / 12,
-      deltaVsCurrentRate: (SCENARIOS[scenIdx].rate - rate) * 100, // pp 差距
+      deltaVsCurrentRate: (rate - conservRate) * 100,
     };
-  }, [totalAssets, monthly, swr, scenIdx]);
+  }, [totalAssets, monthly, swr, rate]);
 
   return (
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -277,35 +271,27 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       {subTab === "dashboard" && (<>
 
       {/* ── 頁面說明句 ───────────────────────────────────────── */}
-      {(() => {
-        const moderate    = fireCrossings.find(c => c.scenLabel === "中性 12%");
-        const conservative = fireCrossings.find(c => c.scenLabel === "保守 7%");
-        return (
-          <div style={{
-            background: C.surface3, border: `1px solid ${C.border}`,
-            borderRadius: 12, padding: "14px 18px",
-            fontSize: 13, color: C.textMuted, lineHeight: 1.6,
-          }}>
-            <span style={{ fontWeight: 700, color: C.text }}>財務自由試算</span>
-            {" "}— 以你設定的月支出{" "}
-            <span style={{ color: mode.color, fontWeight: 700 }}>NT${fmt(monthly)}/月</span>
-            {" "}為目標，資產需累積到{" "}
-            <span style={{ color: mode.color, fontWeight: 700 }}>NT${(fireNum / 1e6).toFixed(1)}M</span>
-            {" "}才能靠投資報酬支應生活，不再依賴工作收入。
-            {moderate && (
-              <span>
-                {" "}中性情境下預計{" "}
-                <span style={{ color: C.gold, fontWeight: 700, fontSize: 15 }}>{moderate.year} 年</span>
-                {" "}達標
-                {conservative && conservative.year !== moderate.year && (
-                  <span style={{ color: C.textDim }}>，保守估計 {conservative.year} 年</span>
-                )}
-                。
-              </span>
-            )}
-          </div>
-        );
-      })()}
+      <div style={{
+        background: C.surface3, border: `1px solid ${C.border}`,
+        borderRadius: 12, padding: "14px 18px",
+        fontSize: 13, color: C.textMuted, lineHeight: 1.6,
+      }}>
+        <span style={{ fontWeight: 700, color: C.text }}>財務自由試算</span>
+        {" "}— 以月支出{" "}
+        <span style={{ color: mode.color, fontWeight: 700 }}>NT${fmt(monthly)}/月</span>
+        {" "}、年化報酬{" "}
+        <span style={{ color: scen.color, fontWeight: 700 }}>{(rate * 100).toFixed(1)}%</span>
+        {" "}推算，資產累積到{" "}
+        <span style={{ color: mode.color, fontWeight: 700 }}>NT${(fireNum / 1e6).toFixed(1)}M</span>
+        {" "}後，每年投資報酬就夠支應生活，不再依賴工作收入。
+        {fireCrossings[0] && (
+          <span>
+            {" "}預計{" "}
+            <span style={{ color: scen.color, fontWeight: 700, fontSize: 15 }}>{fireCrossings[0].year} 年</span>
+            {" "}達標。
+          </span>
+        )}
+      </div>
 
       {/* ── P-007 訊號 Banner ────────────────────────────────── */}
       {signalState.type !== "NEUTRAL" && (() => {
@@ -365,14 +351,25 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
       {/* ── 控制列 ──────────────────────────────────────────── */}
       <Card style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-        {/* Row 1: 情境報酬率 */}
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        {/* Row 1: 報酬率滑桿 + 快捷點 */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>報酬率</span>
-          {SCENARIOS.map((s, i) => (
-            <CtrlBtn key={s.id} active={scenIdx === i} color={s.color} onClick={() => setScenIdx(i)}>
-              {s.label}
-            </CtrlBtn>
-          ))}
+          <input
+            type="range" min={1} max={30} step={0.5}
+            value={rate * 100}
+            onChange={e => setRate(Number(e.target.value) / 100)}
+            style={{ flex: 1, minWidth: 160, maxWidth: 280, accentColor: scen.color, cursor: "pointer" }}
+          />
+          <span style={{ ...T.mono, fontSize: 13, fontWeight: 700, color: scen.color, minWidth: 52 }}>
+            {(rate * 100).toFixed(1)}%
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {SCENARIOS.map(s => (
+              <CtrlBtn key={s.id} small active={rate === s.rate} color={s.color} onClick={() => setRate(s.rate)}>
+                {s.label}
+              </CtrlBtn>
+            ))}
+          </div>
           <span style={{ marginLeft: "auto", fontSize: 10, color: C.textDim }}>
             起點 NT${fmt(Math.round(totalAssets))}
           </span>
@@ -512,15 +509,16 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
               formatter={(v, name) => [`NT$${fmt(v)}`, name]}
               labelFormatter={l => `${l} 年`}
             />
-            <Line type="monotone" dataKey="c7"  stroke={C.blue}   strokeWidth={1.5} dot={false} name="保守 7%"  />
-            <Line type="monotone" dataKey="c12" stroke={C.gold}   strokeWidth={2}   dot={false} name="中性 12%" />
-            <Line type="monotone" dataKey="c18" stroke={C.accent} strokeWidth={2}   dot={false} name="積極 18%" />
+            <Line type="monotone" dataKey="c7"      stroke={C.blue   + "44"} strokeWidth={1} dot={false} name="保守 7%（參考）"  strokeDasharray="4 3" />
+            <Line type="monotone" dataKey="c12"     stroke={C.gold   + "44"} strokeWidth={1} dot={false} name="中性 12%（參考）" strokeDasharray="4 3" />
+            <Line type="monotone" dataKey="c18"     stroke={C.accent + "44"} strokeWidth={1} dot={false} name="積極 18%（參考）" strokeDasharray="4 3" />
+            <Line type="monotone" dataKey="cCustom" stroke={scen.color}      strokeWidth={2.5} dot={false} name={`你的設定 ${(rate * 100).toFixed(1)}%`} />
             {fireCrossings.map(c => (
               <ReferenceDot
-                key={`${c.year}-${c.curveColor}`}
+                key={c.year}
                 x={c.year} y={c.value}
-                r={5} fill={c.curveColor} stroke={C.bg} strokeWidth={1.5}
-                label={{ value: `${c.year}`, fill: c.curveColor, fontSize: 9, position: "top" }}
+                r={5} fill={scen.color} stroke={C.bg} strokeWidth={1.5}
+                label={{ value: `${c.year}`, fill: scen.color, fontSize: 9, position: "top" }}
               />
             ))}
           </LineChart>
