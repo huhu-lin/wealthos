@@ -76,22 +76,21 @@ export default function App() {
       setError(null);
       setLoading(true);
 
-      // ── 自動認領舊資料（user_id IS NULL → 指定給目前登入用戶）
-      // 用 localStorage 旗標確保每個帳號只執行一次，防止第二個帳號搶走資料
-      const uid = (await supabase.auth.getUser()).data.user?.id;
-      if (uid) {
+      // ── 自動認領舊資料（非阻塞背景執行，每個帳號只跑一次）
+      supabase.auth.getUser().then(({ data }) => {
+        const uid = data.user?.id;
+        if (!uid) return;
         const claimKey = `legacy_claimed_${uid}`;
-        if (!localStorage.getItem(claimKey)) {
-          await Promise.all([
-            supabase.from("assets").update({ user_id: uid }).is("user_id", null),
-            supabase.from("liabilities").update({ user_id: uid }).is("user_id", null),
-            supabase.from("pledges").update({ user_id: uid }).is("user_id", null),
-            supabase.from("monthly_snapshots").update({ user_id: uid }).is("user_id", null),
-            supabase.from("strategy_tickers").update({ user_id: uid }).is("user_id", null),
-          ]);
-          localStorage.setItem(claimKey, '1');
-        }
-      }
+        if (localStorage.getItem(claimKey)) return;
+        Promise.all([
+          supabase.from("assets").update({ user_id: uid }).is("user_id", null),
+          supabase.from("liabilities").update({ user_id: uid }).is("user_id", null),
+          supabase.from("pledges").update({ user_id: uid }).is("user_id", null),
+          supabase.from("monthly_snapshots").update({ user_id: uid }).is("user_id", null),
+          supabase.from("strategy_tickers").update({ user_id: uid }).is("user_id", null),
+        ]).then(() => localStorage.setItem(claimKey, '1'));
+      });
+
       const [a, l, s, p, cf, st, rate] = await Promise.all([
         supabase.from("assets").select("*").order("account"),
         supabase.from("liabilities").select("*"),
