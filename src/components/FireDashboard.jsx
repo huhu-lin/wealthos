@@ -26,15 +26,15 @@ const SCENARIOS = [
 
 // ── FIRE 模式（月支出快捷點）─────────────────────────────────
 const FIRE_MODES = [
-  { key: "lean", label: "Lean", monthly: 35000, color: C.accent, dash: "3 3"   },
-  { key: "base", label: "Base", monthly: 45000, color: C.blue,   dash: "8 4"   },
-  { key: "fat",  label: "Fat",  monthly: 60000, color: C.purple, dash: "14 4"  },
+  { key: "lean", label: "節約", monthly: 35000, color: C.accent, dash: "3 3"   },
+  { key: "base", label: "一般", monthly: 45000, color: C.blue,   dash: "8 4"   },
+  { key: "fat",  label: "舒適", monthly: 60000, color: C.purple, dash: "14 4"  },
 ];
 
 const CURVE_KEYS = [
-  { key: "c7",  color: C.blue   },
-  { key: "c12", color: C.gold   },
-  { key: "c18", color: C.accent },
+  { key: "c7",  color: C.blue,   scenLabel: "保守 7%"  },
+  { key: "c12", color: C.gold,   scenLabel: "中性 12%" },
+  { key: "c18", color: C.accent, scenLabel: "積極 18%" },
 ];
 
 const MONTHLY_MIN  = 20000;
@@ -213,7 +213,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   const fireCrossings = useMemo(() => {
     return CURVE_KEYS.flatMap(sc => {
       const hit = chartData.find(d => d[sc.key] >= fireNum);
-      return hit ? [{ year: hit.year, value: hit[sc.key], curveColor: sc.color }] : [];
+      return hit ? [{ year: hit.year, value: hit[sc.key], curveColor: sc.color, scenLabel: sc.scenLabel }] : [];
     });
   }, [chartData, fireNum]);
 
@@ -275,6 +275,37 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       )}
 
       {subTab === "dashboard" && (<>
+
+      {/* ── 頁面說明句 ───────────────────────────────────────── */}
+      {(() => {
+        const moderate    = fireCrossings.find(c => c.scenLabel === "中性 12%");
+        const conservative = fireCrossings.find(c => c.scenLabel === "保守 7%");
+        return (
+          <div style={{
+            background: C.surface3, border: `1px solid ${C.border}`,
+            borderRadius: 12, padding: "14px 18px",
+            fontSize: 13, color: C.textMuted, lineHeight: 1.6,
+          }}>
+            <span style={{ fontWeight: 700, color: C.text }}>財務自由試算</span>
+            {" "}— 以你設定的月支出{" "}
+            <span style={{ color: mode.color, fontWeight: 700 }}>NT${fmt(monthly)}/月</span>
+            {" "}為目標，資產需累積到{" "}
+            <span style={{ color: mode.color, fontWeight: 700 }}>NT${(fireNum / 1e6).toFixed(1)}M</span>
+            {" "}才能靠投資報酬支應生活，不再依賴工作收入。
+            {moderate && (
+              <span>
+                {" "}中性情境下預計{" "}
+                <span style={{ color: C.gold, fontWeight: 700, fontSize: 15 }}>{moderate.year} 年</span>
+                {" "}達標
+                {conservative && conservative.year !== moderate.year && (
+                  <span style={{ color: C.textDim }}>，保守估計 {conservative.year} 年</span>
+                )}
+                。
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── P-007 訊號 Banner ────────────────────────────────── */}
       {signalState.type !== "NEUTRAL" && (() => {
@@ -378,9 +409,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </div>
         </div>
 
-        {/* Row 3: SWR */}
+        {/* Row 3: 退休提領率 */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>SWR</span>
+          <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>提領率</span>
           {SWR_OPTIONS.map(o => (
             <CtrlBtn key={o.value} small active={swr === o.value} color={C.gold}
               onClick={() => setSwr(o.value)}>
@@ -388,7 +419,8 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             </CtrlBtn>
           ))}
           <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4 }}>
-            → FIRE 數 <strong style={{ color: mode.color }}>NT${fmt(fireNum)}</strong>
+            退休後每年從資產提領的比例 → 需累積{" "}
+            <strong style={{ color: mode.color }}>NT${fmt(fireNum)}</strong>
             <span style={{ color: C.textDim, marginLeft: 4 }}>（{swrOpt.desc}）</span>
           </span>
         </div>
@@ -433,7 +465,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           color={metrics.workOptional >= 1 ? C.accent : C.gold}
         />
         <KPI
-          label={`每月安全提領（${swrOpt.label} SWR）`}
+          label={`每月可安全提領（${swrOpt.label} 提領率）`}
           value={Math.round(metrics.dynamicWithdrawal)}
           sub={`若現在退休每月可花這金額，長期不耗盡組合｜${swrOpt.hint}`}
           color={C.purple}
@@ -458,7 +490,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             {cashflowStats
               ? <>— 年存 <span style={{ color: C.accent }}>NT${fmt(annualContrib)}（近{cashflowStats.months}月實際）</span></>
               : <>— 年存 <span style={{ color: C.gold }}>NT$180,000（預設）</span></>}
-            {" "}｜點為各情境達 {swrOpt.label} SWR FIRE 的年份
+            {" "}｜▲ 各情境首次達標的年份（{swrOpt.label} 提領率）
           </span>
         </div>
         <ResponsiveContainer width="100%" height={280}>
@@ -496,7 +528,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             FIRE 目標進度
           </div>
           <div style={{ fontSize: 10, color: C.textDim, marginBottom: 16 }}>
-            以 {swrOpt.label} SWR（{swrOpt.desc}）計算 FIRE 數，點擊上方切換
+            以 {swrOpt.label} 提領率（{swrOpt.desc}）計算所需資產，點擊快捷切換目標
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
             {fireProgress.map(fp => {
