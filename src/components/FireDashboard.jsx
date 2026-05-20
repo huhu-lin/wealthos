@@ -49,10 +49,10 @@ function resolveMode(monthly) {
 
 // ── SWR 選項 ─────────────────────────────────────────────────
 const SWR_OPTIONS = [
-  { value: 0.025, label: "2.5%", desc: "×40，50年+", hint: "超長期 / 極保守" },
-  { value: 0.030, label: "3%",   desc: "×33，40年+", hint: "33歲建議" },
-  { value: 0.035, label: "3.5%", desc: "×29，30年+", hint: "早退標準" },
-  { value: 0.040, label: "4%",   desc: "×25，25年",  hint: "傳統法則" },
+  { value: 0.025, label: "2.5%", years: "永久",  desc: "×40，永久不動本金", hint: "超長期 / 極保守" },
+  { value: 0.030, label: "3%",   years: "40年+", desc: "×33，40年以上",     hint: "年輕退休建議"   },
+  { value: 0.035, label: "3.5%", years: "30年",  desc: "×29，退休30年",     hint: "早退標準"       },
+  { value: 0.040, label: "4%",   years: "25年",  desc: "×25，退休25年",     hint: "傳統法則"       },
 ];
 
 // ── NPER（貸款還清月數）──────────────────────────────────────
@@ -415,13 +415,21 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           {SWR_OPTIONS.map(o => (
             <CtrlBtn key={o.value} small active={swr === o.value} color={C.gold}
               onClick={() => setSwr(o.value)}>
-              {o.label}
+              <div style={{ lineHeight: 1.3, textAlign: "center" }}>
+                <div>{o.label}</div>
+                <div style={{ fontSize: 9, fontWeight: 400, opacity: 0.8 }}>{o.years}</div>
+              </div>
             </CtrlBtn>
           ))}
-          <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4 }}>
-            退休後每年從資產提領的比例 → 需累積{" "}
+          <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4, lineHeight: 1.5 }}>
+            退休後每年花掉資產的{" "}
+            <span style={{ color: C.gold }}>{swrOpt.label}</span>。
+            {" "}存到{" "}
             <strong style={{ color: mode.color }}>NT${fmt(fireNum)}</strong>
-            <span style={{ color: C.textDim, marginLeft: 4 }}>（{swrOpt.desc}）</span>
+            {" "}後，每年可領{" "}
+            <strong style={{ color: C.accent }}>NT${fmt(monthly * 12)}</strong>
+            {" "}= 月支出 × 12，理論上能撐{" "}
+            <span style={{ color: C.gold }}>{swrOpt.years}</span>。
           </span>
         </div>
       </Card>
