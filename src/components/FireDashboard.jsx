@@ -94,13 +94,15 @@ function CtrlBtn({ active, color, onClick, children, small }) {
 }
 
 export default function FireDashboard({ allAssets, liabilities, cashflow = [], strategies = [], reload }) {
-  const [rate,    setRate]    = useState(0.12);     // 預設中性 12%
-  const [monthly, setMonthly] = useState(45000);   // 預設 Base 45K/月
-  const [swr,     setSwr]     = useState(0.030);   // 預設 3%（33歲適合）
-  const [subTab,  setSubTab]  = useState("dashboard"); // "dashboard" | "cashflow"
+  const [rate,      setRate]      = useState(0.12);   // 名目報酬率，預設中性 12%
+  const [inflation, setInflation] = useState(0.02);   // 預設通膨 2%
+  const [monthly,   setMonthly]   = useState(45000);  // 預設 Base 45K/月
+  const [swr,       setSwr]       = useState(0.030);  // 預設 3%（33歲適合）
+  const [subTab,    setSubTab]    = useState("dashboard"); // "dashboard" | "cashflow"
 
-  const scen    = SCENARIOS.find(s => s.rate === rate)
-                ?? { id: "custom", label: `自訂 ${(rate * 100).toFixed(1)}%`, rate, color: C.text };
+  const realRate = Math.max(0.001, rate - inflation); // 實質報酬率（名目 − 通膨）
+  const scen     = SCENARIOS.find(s => s.rate === rate)
+                 ?? { id: "custom", label: `自訂 ${(rate * 100).toFixed(1)}%`, rate, color: C.text };
   const mode    = resolveMode(monthly);
   const swrOpt  = SWR_OPTIONS.find(o => o.value === swr);
   const fireNum = Math.round(monthly * 12 / swr);
@@ -141,13 +143,13 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
   // ── 核心指標 ─────────────────────────────────────────────────
   const metrics = useMemo(() => {
-    const annualReturn = totalAssets * rate;
+    const annualReturn = totalAssets * realRate;
     const modeAnnual   = monthly * 12;
     const workOptional = annualReturn / modeAnnual;
 
     const coastYears = totalAssets >= fireNum
       ? 0
-      : Math.log(fireNum / totalAssets) / Math.log(1 + rate);
+      : Math.log(fireNum / totalAssets) / Math.log(1 + realRate);
 
     const { credit, pledge } = loans;
     const totalBorrow  = (credit.value || 0) + (pledge.value || 0);
@@ -163,17 +165,18 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       dynamicWithdrawal: totalAssets * swr / 12,
       coastYears,
       weightedCost,
-      arbitrage: rate - weightedCost,
+      arbitrage: rate - weightedCost, // 套利比較維持名目（通膨兩邊抵消）
     };
-  }, [totalAssets, rate, monthly, fireNum, swr, loans]);
+  }, [totalAssets, realRate, rate, monthly, fireNum, swr, loans]);
 
   // ── 三情境成長圖（年存款優先用實際，否則 18萬）────────────
   const annualContrib = cashflowStats?.annualSavings ?? 180000;
   const chartData = useMemo(() => {
-    const c7   = growthCurve(totalAssets, 0.07, annualContrib, 25);
-    const c12  = growthCurve(totalAssets, 0.12, annualContrib, 25);
-    const c18  = growthCurve(totalAssets, 0.18, annualContrib, 25);
-    const cust = growthCurve(totalAssets, rate,  annualContrib, 25);
+    const real = (n) => Math.max(0.001, n - inflation);
+    const c7   = growthCurve(totalAssets, real(0.07), annualContrib, 25);
+    const c12  = growthCurve(totalAssets, real(0.12), annualContrib, 25);
+    const c18  = growthCurve(totalAssets, real(0.18), annualContrib, 25);
+    const cust = growthCurve(totalAssets, realRate,   annualContrib, 25);
     return c7.map((p, i) => ({
       year:    p.year,
       c7:      c7[i].value,
@@ -181,7 +184,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       c18:     c18[i].value,
       cCustom: cust[i].value,
     }));
-  }, [totalAssets, annualContrib, rate]);
+  }, [totalAssets, annualContrib, realRate, inflation]);
 
   // ── 三模式快捷點 + 自訂目標 × 目前 SWR 進度條 ──────────────
   const fireProgress = useMemo(() => {
@@ -190,7 +193,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       const pct       = Math.min(totalAssets / target, 1);
       const remaining = Math.max(target - totalAssets, 0);
       const yearsLeft = remaining > 0
-        ? Math.log(target / totalAssets) / Math.log(1 + rate)
+        ? Math.log(target / totalAssets) / Math.log(1 + realRate)
         : 0;
       return { ...m, target, pct, remaining, yearsLeft };
     });
@@ -199,12 +202,12 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       const pct       = Math.min(totalAssets / target, 1);
       const remaining = Math.max(target - totalAssets, 0);
       const yearsLeft = remaining > 0
-        ? Math.log(target / totalAssets) / Math.log(1 + rate)
+        ? Math.log(target / totalAssets) / Math.log(1 + realRate)
         : 0;
       base.push({ key: "custom", label: "自訂", monthly, color: C.gold, dash: "6 2 2 2", target, pct, remaining, yearsLeft });
     }
     return base;
-  }, [totalAssets, rate, swr, monthly]);
+  }, [totalAssets, realRate, swr, monthly]);
 
   const fireCrossings = useMemo(() => {
     const hit = chartData.find(d => d.cCustom >= fireNum);
@@ -233,18 +236,18 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
   // 保守情境（用於賣訊比較）
   const conservativeMetrics = useMemo(() => {
-    const conservRate    = SCENARIOS[0].rate; // 7%
-    const modeAnnual     = monthly * 12;
-    const conservFireNum = Math.round(monthly * 12 / swr);
-    const coastYears     = totalAssets >= conservFireNum ? 0
-      : Math.log(conservFireNum / totalAssets) / Math.log(1 + conservRate);
+    const conservRealRate = Math.max(0.001, SCENARIOS[0].rate - inflation); // 保守 7% 實質
+    const modeAnnual      = monthly * 12;
+    const conservFireNum  = Math.round(monthly * 12 / swr);
+    const coastYears      = totalAssets >= conservFireNum ? 0
+      : Math.log(conservFireNum / totalAssets) / Math.log(1 + conservRealRate);
     return {
-      workOptional: (totalAssets * conservRate) / modeAnnual,
+      workOptional: (totalAssets * conservRealRate) / modeAnnual,
       coastYears,
       dynamicWithdrawal: totalAssets * swr / 12,
-      deltaVsCurrentRate: (rate - conservRate) * 100,
+      deltaVsCurrentRate: (realRate - conservRealRate) * 100,
     };
-  }, [totalAssets, monthly, swr, rate]);
+  }, [totalAssets, monthly, swr, realRate, inflation]);
 
   return (
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -279,8 +282,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         <span style={{ fontWeight: 700, color: C.text }}>財務自由試算</span>
         {" "}— 以月支出{" "}
         <span style={{ color: mode.color, fontWeight: 700 }}>NT${fmt(monthly)}/月</span>
-        {" "}、年化報酬{" "}
-        <span style={{ color: scen.color, fontWeight: 700 }}>{(rate * 100).toFixed(1)}%</span>
+        {" "}、實質報酬{" "}
+        <span style={{ color: scen.color, fontWeight: 700 }}>{(realRate * 100).toFixed(1)}%</span>
+        <span style={{ color: C.textDim, fontSize: 11 }}>{" "}（名目 {(rate * 100).toFixed(1)}% − 通膨 {(inflation * 100).toFixed(1)}%）</span>
         {" "}推算，資產累積到{" "}
         <span style={{ color: mode.color, fontWeight: 700 }}>NT${(fireNum / 1e6).toFixed(1)}M</span>
         {" "}後，每年投資報酬就夠支應生活，不再依賴工作收入。
@@ -406,7 +410,35 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </div>
         </div>
 
-        {/* Row 3: 退休提領率 */}
+        {/* Row 3: 通膨率 */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>通膨率</span>
+          <input
+            type="range" min={0} max={6} step={0.25}
+            value={inflation * 100}
+            onChange={e => setInflation(Number(e.target.value) / 100)}
+            style={{ flex: 1, minWidth: 160, maxWidth: 280, accentColor: C.red, cursor: "pointer" }}
+          />
+          <span style={{ ...T.mono, fontSize: 13, fontWeight: 700, color: C.red, minWidth: 52 }}>
+            {(inflation * 100).toFixed(2)}%
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {[{ label: "1%", v: 0.01 }, { label: "2%", v: 0.02 }, { label: "3%", v: 0.03 }].map(o => (
+              <CtrlBtn key={o.v} small active={inflation === o.v} color={C.red} onClick={() => setInflation(o.v)}>
+                {o.label}
+              </CtrlBtn>
+            ))}
+          </div>
+          <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4 }}>
+            實質報酬率{" "}
+            <span style={{ color: realRate < 0.03 ? C.gold : C.accent, fontWeight: 700 }}>
+              {(realRate * 100).toFixed(1)}%
+            </span>
+            {" "}（名目 {(rate * 100).toFixed(1)}% − 通膨 {(inflation * 100).toFixed(2)}%）
+          </span>
+        </div>
+
+        {/* Row 4: 退休提領率 */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>提領率</span>
           {SWR_OPTIONS.map(o => (
@@ -479,7 +511,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           label="負債套利空間"
           value={`+${(metrics.arbitrage * 100).toFixed(1)}%`}
           prefix=""
-          sub={`${scen.label} − 加權借款 ${(metrics.weightedCost * 100).toFixed(2)}%`}
+          sub={`名目報酬 ${(rate * 100).toFixed(1)}% − 借款 ${(metrics.weightedCost * 100).toFixed(2)}%｜台灣無風險利率（10年公債）約 1.5–2%`}
           color={C.gold}
         />
       </div>
@@ -495,7 +527,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             {cashflowStats
               ? <>— 年存 <span style={{ color: C.accent }}>NT${fmt(annualContrib)}（近{cashflowStats.months}月實際）</span></>
               : <>— 年存 <span style={{ color: C.gold }}>NT$180,000（預設）</span></>}
-            {" "}｜▲ 各情境首次達標的年份（{swrOpt.label} 提領率）
+            {" "}｜以今日購買力試算（已扣 {(inflation * 100).toFixed(1)}% 通膨）｜▲ 達標年份
           </span>
         </div>
         <ResponsiveContainer width="100%" height={280}>
