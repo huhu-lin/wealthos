@@ -100,7 +100,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   const [swr,       setSwr]       = useState(0.030);  // 預設 3%（33歲適合）
   const [subTab,    setSubTab]    = useState("dashboard"); // "dashboard" | "cashflow"
 
-  const realRate = Math.max(0.001, rate - inflation); // 實質報酬率（名目 − 通膨）
+  const realRate = rate - inflation; // 實質報酬率（名目 − 通膨），允許 ≤ 0
   const scen     = SCENARIOS.find(s => s.rate === rate)
                  ?? { id: "custom", label: `自訂 ${(rate * 100).toFixed(1)}%`, rate, color: C.text };
   const mode    = resolveMode(monthly);
@@ -149,7 +149,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
     const coastYears = totalAssets >= fireNum
       ? 0
-      : Math.log(fireNum / totalAssets) / Math.log(1 + realRate);
+      : (totalAssets > 0 && realRate > 0)
+        ? Math.log(fireNum / totalAssets) / Math.log(1 + realRate)
+        : Infinity;
 
     const { credit, pledge } = loans;
     const totalBorrow  = (credit.value || 0) + (pledge.value || 0);
@@ -172,7 +174,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   // ── 三情境成長圖（年存款優先用實際，否則 18萬）────────────
   const annualContrib = cashflowStats?.annualSavings ?? 180000;
   const chartData = useMemo(() => {
-    const real = (n) => Math.max(0.001, n - inflation);
+    const real = (n) => n - inflation;
     const c7   = growthCurve(totalAssets, real(0.07), annualContrib, 25);
     const c12  = growthCurve(totalAssets, real(0.12), annualContrib, 25);
     const c18  = growthCurve(totalAssets, real(0.18), annualContrib, 25);
@@ -193,7 +195,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       const pct       = Math.min(totalAssets / target, 1);
       const remaining = Math.max(target - totalAssets, 0);
       const yearsLeft = remaining > 0
-        ? Math.log(target / totalAssets) / Math.log(1 + realRate)
+        ? (totalAssets > 0 && realRate > 0)
+          ? Math.log(target / totalAssets) / Math.log(1 + realRate)
+          : Infinity
         : 0;
       return { ...m, target, pct, remaining, yearsLeft };
     });
@@ -202,7 +206,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       const pct       = Math.min(totalAssets / target, 1);
       const remaining = Math.max(target - totalAssets, 0);
       const yearsLeft = remaining > 0
-        ? Math.log(target / totalAssets) / Math.log(1 + realRate)
+        ? (totalAssets > 0 && realRate > 0)
+          ? Math.log(target / totalAssets) / Math.log(1 + realRate)
+          : Infinity
         : 0;
       base.push({ key: "custom", label: "自訂", monthly, color: C.gold, dash: "6 2 2 2", target, pct, remaining, yearsLeft });
     }
@@ -236,11 +242,13 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
 
   // 保守情境（用於賣訊比較）
   const conservativeMetrics = useMemo(() => {
-    const conservRealRate = Math.max(0.001, SCENARIOS[0].rate - inflation); // 保守 7% 實質
+    const conservRealRate = SCENARIOS[0].rate - inflation; // 保守 7% 實質
     const modeAnnual      = monthly * 12;
     const conservFireNum  = Math.round(monthly * 12 / swr);
     const coastYears      = totalAssets >= conservFireNum ? 0
-      : Math.log(conservFireNum / totalAssets) / Math.log(1 + conservRealRate);
+      : (totalAssets > 0 && conservRealRate > 0)
+        ? Math.log(conservFireNum / totalAssets) / Math.log(1 + conservRealRate)
+        : Infinity;
     return {
       workOptional: (totalAssets * conservRealRate) / modeAnnual,
       coastYears,
@@ -334,7 +342,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
                 }}>
                   {[
                     { label: "保守 7% Work Optional", val: `${(conservativeMetrics.workOptional * 100).toFixed(0)}%`, dim: `vs 現況 ${(metrics.workOptional * 100).toFixed(0)}%` },
-                    { label: "保守 7% Coast FIRE",    val: `${conservativeMetrics.coastYears.toFixed(1)} 年`,         dim: `vs 現況 ${metrics.coastYears.toFixed(1)} 年` },
+                    { label: "保守 7% Coast FIRE",    val: isFinite(conservativeMetrics.coastYears) ? `${conservativeMetrics.coastYears.toFixed(1)} 年` : "—",  dim: `vs 現況 ${isFinite(metrics.coastYears) ? metrics.coastYears.toFixed(1) + " 年" : "—"}` },
                     { label: "報酬率假設差距",            val: `-${conservativeMetrics.deltaVsCurrentRate.toFixed(0)}pp`, dim: "保守 7% vs 目前情境" },
                   ].map(item => (
                     <div key={item.label} style={{
@@ -431,10 +439,13 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </div>
           <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4 }}>
             實質報酬率{" "}
-            <span style={{ color: realRate < 0.03 ? C.gold : C.accent, fontWeight: 700 }}>
+            <span style={{ color: realRate <= 0 ? C.red : realRate < 0.03 ? C.gold : C.accent, fontWeight: 700 }}>
               {(realRate * 100).toFixed(1)}%
             </span>
-            {" "}（名目 {(rate * 100).toFixed(1)}% − 通膨 {(inflation * 100).toFixed(2)}%）
+            {realRate <= 0
+              ? <span style={{ color: C.red, marginLeft: 4 }}>⚠ 通膨超過報酬率，年數試算暫停</span>
+              : <>{" "}（名目 {(rate * 100).toFixed(1)}% − 通膨 {(inflation * 100).toFixed(2)}%）</>
+            }
           </span>
         </div>
 
@@ -489,7 +500,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       <div className="wos-grid-fire-kpi">
         <KPI
           label={`Coast FIRE（${mode.label}）`}
-          value={metrics.coastYears <= 0 ? "已達成 ✓" : `${metrics.coastYears.toFixed(1)} 年`}
+          value={metrics.coastYears <= 0 ? "已達成 ✓" : isFinite(metrics.coastYears) ? `${metrics.coastYears.toFixed(1)} 年` : "—"}
           prefix=""
           sub={`不存新錢自然滾到 NT$${fmt(fireNum)}`}
           color={metrics.coastYears <= 0 ? C.accent : scen.color}
@@ -602,7 +613,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
                 </div>
                 <div style={{ color: C.textDim, fontSize: 10, marginTop: 5 }}>
                   {fp.remaining > 0
-                    ? `還差 NT$${fmt(Math.round(fp.remaining))} ｜ ${scen.label} 情境約 ${fp.yearsLeft.toFixed(1)} 年後達標`
+                    ? isFinite(fp.yearsLeft) ? `還差 NT$${fmt(Math.round(fp.remaining))} ｜ ${scen.label} 情境約 ${fp.yearsLeft.toFixed(1)} 年後達標` : `還差 NT$${fmt(Math.round(fp.remaining))}`
                     : "✓ 已達成"}
                 </div>
               </div>
