@@ -442,9 +442,8 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             <span style={{ color: realRate <= 0 ? C.red : realRate < 0.03 ? C.gold : C.accent, fontWeight: 700 }}>
               {(realRate * 100).toFixed(1)}%
             </span>
-            {realRate <= 0
-              ? <span style={{ color: C.red, marginLeft: 4 }}>⚠ 通膨超過報酬率，年數試算暫停</span>
-              : <>{" "}（名目 {(rate * 100).toFixed(1)}% − 通膨 {(inflation * 100).toFixed(2)}%）</>
+            {realRate <= 0 &&
+              <span style={{ color: C.red, marginLeft: 4 }}>⚠ 通膨超過報酬率，年數試算暫停</span>
             }
           </span>
         </div>
@@ -455,10 +454,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           {SWR_OPTIONS.map(o => (
             <CtrlBtn key={o.value} small active={swr === o.value} color={C.gold}
               onClick={() => setSwr(o.value)}>
-              <div style={{ lineHeight: 1.3, textAlign: "center" }}>
-                <div>{o.label}</div>
-                <div style={{ fontSize: 9, fontWeight: 400, opacity: 0.8 }}>{o.years}</div>
-              </div>
+              {o.label}
             </CtrlBtn>
           ))}
           <span style={{ fontSize: 10, color: C.textDim, marginLeft: 4, lineHeight: 1.5 }}>
@@ -522,7 +518,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           label="負債套利空間"
           value={`+${(metrics.arbitrage * 100).toFixed(1)}%`}
           prefix=""
-          sub={`名目報酬 ${(rate * 100).toFixed(1)}% − 借款 ${(metrics.weightedCost * 100).toFixed(2)}%｜台灣無風險利率（10年公債）約 1.5–2%`}
+          sub={`vs 借款成本 ${(metrics.weightedCost * 100).toFixed(2)}%｜台灣10年公債無風險利率 ~1.5–2%`}
           color={C.gold}
         />
       </div>
