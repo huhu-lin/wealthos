@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import {
   LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceDot,
 } from "recharts";
 import { C, T, S, TT, fmt } from "../constants/theme";
 import KPI  from "./ui/KPI";
@@ -26,9 +26,15 @@ const SCENARIOS = [
 
 // ── FIRE 模式（月支出快捷點）─────────────────────────────────
 const FIRE_MODES = [
-  { key: "lean", label: "Lean", monthly: 35000, color: C.accent },
-  { key: "base", label: "Base", monthly: 45000, color: C.blue   },
-  { key: "fat",  label: "Fat",  monthly: 60000, color: C.purple },
+  { key: "lean", label: "Lean", monthly: 35000, color: C.accent, dash: "3 3"   },
+  { key: "base", label: "Base", monthly: 45000, color: C.blue,   dash: "8 4"   },
+  { key: "fat",  label: "Fat",  monthly: 60000, color: C.purple, dash: "14 4"  },
+];
+
+const CURVE_KEYS = [
+  { key: "c7",  color: C.blue   },
+  { key: "c12", color: C.gold   },
+  { key: "c18", color: C.accent },
 ];
 
 const MONTHLY_MIN  = 20000;
@@ -199,10 +205,17 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       const yearsLeft = remaining > 0
         ? Math.log(target / totalAssets) / Math.log(1 + scen.rate)
         : 0;
-      base.push({ key: "custom", label: "自訂", monthly, color: C.gold, target, pct, remaining, yearsLeft });
+      base.push({ key: "custom", label: "自訂", monthly, color: C.gold, dash: "6 2 2 2", target, pct, remaining, yearsLeft });
     }
     return base;
   }, [totalAssets, scen, swr, monthly]);
+
+  const fireCrossings = useMemo(() => {
+    return CURVE_KEYS.flatMap(sc => {
+      const hit = chartData.find(d => d[sc.key] >= fireNum);
+      return hit ? [{ year: hit.year, value: hit[sc.key], curveColor: sc.color }] : [];
+    });
+  }, [chartData, fireNum]);
 
   // ── 策略訊號狀態（P-007 聯動）────────────────────────────
   const signalState = useMemo(() => {
@@ -445,11 +458,11 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             {cashflowStats
               ? <>— 年存 <span style={{ color: C.accent }}>NT${fmt(annualContrib)}（近{cashflowStats.months}月實際）</span></>
               : <>— 年存 <span style={{ color: C.gold }}>NT$180,000（預設）</span></>}
-            {" "}｜水平線為 {swrOpt.label} SWR 各 FIRE 數
+            {" "}｜點為各情境達 {swrOpt.label} SWR FIRE 的年份
           </span>
         </div>
         <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={chartData} margin={{ top: 4, right: 70, left: 0, bottom: 0 }}>
+          <LineChart data={chartData} margin={{ top: 20, right: 70, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
             <XAxis dataKey="year" tick={{ fill: C.textDim, fontSize: 11 }} />
             <YAxis tickFormatter={v => `${(v / 1e6).toFixed(0)}M`}
@@ -462,10 +475,12 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             <Line type="monotone" dataKey="c7"  stroke={C.blue}   strokeWidth={1.5} dot={false} name="保守 7%"  />
             <Line type="monotone" dataKey="c12" stroke={C.gold}   strokeWidth={2}   dot={false} name="中性 12%" />
             <Line type="monotone" dataKey="c18" stroke={C.accent} strokeWidth={2}   dot={false} name="積極 18%" />
-            {fireProgress.map(fp => (
-              <ReferenceLine key={fp.key} y={fp.target}
-                stroke={fp.color + "55"} strokeDasharray="5 4"
-                label={{ value: `${fp.label} ${(fp.target/1e6).toFixed(1)}M`, fill: fp.color + "aa", fontSize: 9, position: "insideRight" }}
+            {fireCrossings.map(c => (
+              <ReferenceDot
+                key={`${c.year}-${c.curveColor}`}
+                x={c.year} y={c.value}
+                r={5} fill={c.curveColor} stroke={C.bg} strokeWidth={1.5}
+                label={{ value: `${c.year}`, fill: c.curveColor, fontSize: 9, position: "top" }}
               />
             ))}
           </LineChart>
