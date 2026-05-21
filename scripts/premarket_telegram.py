@@ -126,16 +126,17 @@ def generate_summary(mkt, tx, news_grouped):
     tx_line = f"- 台指期夜盤：{fmt_pair(tx)}" if tx else "- 台指期夜盤：N/A"
     news_block = format_news_block(news_grouped)
 
-    prompt = f"""你是一位台灣資深財經分析師，請根據以下數據撰寫今日「開盤前重點分析」，繁體中文約 200 字。
+    prompt = f"""你是一位台灣資深財經分析師，請根據以下數據，以條列式整理今日「盤前必看重點」，繁體中文。
 
-【使用者投資偏好】市值型/大盤 ETF。請以「大盤、ETF、權值股（台積電/鴻海/聯發科/台達電/廣達/富邦金/中信金 等）動向」為分析重心；個股新聞僅在判斷其對加權指數有顯著拉抬或拖累時提及，否則略過。CNBC 英文內容請翻譯後納入。
+【使用者投資偏好】市值型/大盤 ETF。分析重心：大盤、ETF、權值股（台積電/鴻海/聯發科/台達電/廣達/富邦金/中信金 等）；個股新聞只在對加權指數有顯著影響時提及。CNBC 英文內容翻譯後納入。
 
-要求：
-1. 開頭一句點出今日台股開盤可能走勢方向（偏多/偏空/震盪）並說明關鍵推力。
-2. 接著用 2~3 句連貫敘述：美股動向、台指期夜盤暗示、國際股市與商品/匯率影響，並結合新聞中與大盤/權值股相關的訊息。
-3. 最後一句點出今日需要關注的風險或事件。
-語氣專業簡潔、直接輸出內文，不需標題或條列。
-【注意】只分析市場環境，不得建議具體買賣標的。
+格式（嚴格遵守）：
+• 每條以「• 」開頭，每條不超過 30 字
+• 第 1 條：今日台股開盤方向（偏多／偏空／震盪）+ 關鍵推力
+• 第 2～4 條：最重要的市場訊號，從美股、台指期、國際、商品、新聞中擇重
+• 最後 1 條：今日最需關注的風險或事件，以「⚠️ 」開頭
+• 直接輸出 5 條條列，不需前言、標題或其他文字
+• 只分析市場環境，不得建議具體買賣標的
 
 【{last_td}美股收盤】
 - S&P500：{fmt_pair(mkt.get('sp500'))}
@@ -211,6 +212,12 @@ def fmt_line(label, d, unit=""):
     chg_str = f" ({chg:+.2f}%)" if chg is not None else ""
     return f"{label}: {d['value']}{unit}{chg_str}"
 
+def compact(d, unit=""):
+    if not d or d.get("value") is None: return "N/A"
+    chg = d.get("chg")
+    chg_str = f"（{chg:+.2f}%）" if chg is not None else ""
+    return f"{d['value']}{unit}{chg_str}"
+
 # ── 主流程 ────────────────────────────────────────────────────
 print("\n【步驟 1】抓取市場數據")
 mkt = get_market_data()
@@ -227,39 +234,24 @@ summary = generate_summary(mkt, tx, news_grouped)
 print("\n【步驟 5】組合 Telegram 訊息")
 last_td = "上週五" if twn_now().weekday() == 0 else "昨日"
 
+tx_compact = compact(tx) if tx and tx.get("value") is not None else "N/A"
 lines = [
-    f"🌅 <b>WealthOS 盤前重點 — {today}</b>",
+    f"🌅 <b>WealthOS 盤前 — {today}</b>",
     "",
-    f"<b>📊 {last_td}美股收盤</b>",
-    fmt_line("  S&P500", mkt.get("sp500")),
-    fmt_line("  NASDAQ", mkt.get("nasdaq")),
-    fmt_line("  道瓊  ", mkt.get("dow")),
-    "",
-    "<b>🇹🇼 台股 / 台指期</b>",
-    fmt_line(f"  加權({last_td})", mkt.get("twii")),
-    f"  台指期夜盤: {tx['value']} ({tx['chg']:+.2f}%)" if tx and tx.get("value") is not None and tx.get("chg") is not None else "  台指期夜盤: N/A",
-    "",
-    "<b>🌏 國際股市</b>",
-    fmt_line("  日經  ", mkt.get("nikkei")),
-    fmt_line("  恆生  ", mkt.get("hsi")),
-    fmt_line("  韓股  ", mkt.get("kospi")),
-    "",
-    "<b>💱 商品 / 風險指標</b>",
-    fmt_line("  黃金", mkt.get("gold")),
-    fmt_line("  原油", mkt.get("oil")),
-    fmt_line("  VIX ", mkt.get("vix")),
-    fmt_line("  US10Y", mkt.get("us10y"), "%"),
-    fmt_line("  DXY  ", mkt.get("dxy")),
+    f"📊 <b>{last_td}美股</b>  S&amp;P500 {compact(mkt.get('sp500'))}｜NASDAQ {compact(mkt.get('nasdaq'))}｜道瓊 {compact(mkt.get('dow'))}",
+    f"🇹🇼 <b>台股</b>  加權 {compact(mkt.get('twii'))}｜台指期夜盤 {tx_compact}",
+    f"🌏 <b>亞股</b>  日經 {compact(mkt.get('nikkei'))}｜恆生 {compact(mkt.get('hsi'))}｜韓股 {compact(mkt.get('kospi'))}",
+    f"💱 <b>商品</b>  黃金 {compact(mkt.get('gold'))}｜原油 {compact(mkt.get('oil'))}｜VIX {compact(mkt.get('vix'))}｜US10Y {compact(mkt.get('us10y'), '%')}｜DXY {compact(mkt.get('dxy'))}",
 ]
 
 if summary:
-    lines += ["", "<b>📝 盤前分析</b>", summary]
+    lines += ["", "<b>📌 今日重點</b>", summary]
 else:
     lines += ["", "<i>⚠️  AI 摘要生成失敗，僅推送原始數據</i>"]
 
 top_links = top_news_links(news_grouped, n=5)
 if top_links:
-    lines += ["", "<b>📰 重點新聞（24h 內最新）</b>"]
+    lines += ["", "<b>📰 重點新聞</b>"]
     for n in top_links:
         title = (n.get("title") or "").replace("<", "&lt;").replace(">", "&gt;")
         url   = n.get("url") or ""

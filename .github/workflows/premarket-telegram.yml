@@ -1,12 +1,12 @@
 name: Pre-market Telegram Brief
 
-# 台灣時間週一至週五 08:00（開盤前一小時）推播盤前重點分析
-# UTC 00:00 Mon-Fri = TWN 08:00
+# 台灣時間週一至週五 08:30（含 GitHub 延遲估算）推播盤前重點分析
+# UTC 22:30 Sun-Thu = TWN 06:30（含約 2 小時 GH 延遲 → 約 08:30）
 # 內容：美股收盤 + 台指期夜盤 + 國際股市 + 商品/匯率 + AI 盤前研判
 
 on:
   schedule:
-    - cron: "0 0 * * 1-5"   # UTC 00:00 Mon-Fri = TWN 08:00
+    - cron: "30 22 * * 0-4"  # UTC 22:30 Sun-Thu = TWN 06:30 → 含 GH 延遲約 08:30
   workflow_dispatch:          # 允許手動觸發（測試用）
 
 jobs:
