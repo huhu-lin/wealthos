@@ -28,7 +28,7 @@ function fmtNum(n) {
 async function findAsset(account, ticker) {
   let query = supabase
     .from('assets')
-    .select('id, name, ticker, coin_id, shares, cost, cost_total, value_twd, account')
+    .select('id, name, ticker, coin_id, shares, cost, cost_total, value_twd, price, price_usd, account')
     .eq('user_id', USER_ID)
     .eq('account', account);
 
@@ -63,6 +63,7 @@ async function handleBuy(args, chatId) {
 
   const newShares = (asset.shares || 0) + delta;
   const update = { shares: newShares };
+  if (asset.price) update.value_twd = asset.price * newShares;
 
   if (costStr) {
     const cost = parseFloat(costStr);
@@ -78,7 +79,7 @@ async function handleBuy(args, chatId) {
   const acctLabel = { tw: '台股', us: '美股', crypto: '加密貨幣' }[account];
   let msg = `✅ 買入成功\n${asset.name}（${acctLabel}）\n+${delta} → 現持 ${newShares} 股`;
   if (costStr && !isNaN(parseFloat(costStr))) msg += `\n成本：${costStr} 元/股`;
-  msg += '\n\n（股價以上次更新為準）';
+  if (asset.price) msg += `\n市值：NT$${fmtNum(asset.price * newShares)}`;
   return reply(chatId, msg);
 }
 
@@ -107,12 +108,15 @@ async function handleSell(args, chatId) {
 
   const update = { shares: newShares };
   if (asset.cost) update.cost_total = asset.cost * newShares;
+  if (asset.price) update.value_twd = asset.price * newShares;
 
   const { error } = await supabase.from('assets').update(update).eq('id', asset.id);
   if (error) return reply(chatId, `❌ 更新失敗：${error.message}`);
 
   const acctLabel = { tw: '台股', us: '美股', crypto: '加密貨幣' }[account];
-  return reply(chatId, `✅ 賣出成功\n${asset.name}（${acctLabel}）\n-${delta} → 現持 ${newShares} 股\n\n（股價以上次更新為準）`);
+  let sellMsg = `✅ 賣出成功\n${asset.name}（${acctLabel}）\n-${delta} → 現持 ${newShares} 股`;
+  if (asset.price) sellMsg += `\n市值：NT$${fmtNum(asset.price * newShares)}`;
+  return reply(chatId, sellMsg);
 }
 
 // ─── /setshares ───────────────────────────────────────────────
@@ -135,12 +139,15 @@ async function handleSetShares(args, chatId) {
 
   const update = { shares: newShares };
   if (asset.cost) update.cost_total = asset.cost * newShares;
+  if (asset.price) update.value_twd = asset.price * newShares;
 
   const { error } = await supabase.from('assets').update(update).eq('id', asset.id);
   if (error) return reply(chatId, `❌ 更新失敗：${error.message}`);
 
   const acctLabel = { tw: '台股', us: '美股', crypto: '加密貨幣' }[account];
-  return reply(chatId, `✅ 持倉更新\n${asset.name}（${acctLabel}）→ ${newShares} 股`);
+  let setMsg = `✅ 持倉更新\n${asset.name}（${acctLabel}）→ ${newShares} 股`;
+  if (asset.price) setMsg += `\n市值：NT$${fmtNum(asset.price * newShares)}`;
+  return reply(chatId, setMsg);
 }
 
 // ─── /cashflow ────────────────────────────────────────────────
