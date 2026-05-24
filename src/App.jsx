@@ -11,9 +11,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "./supabase";
-import { C, BP, fmt } from "./constants/theme";
+import { C, T, BP, fmt } from "./constants/theme";
 import { fetchUSDTWD } from "./utils/priceApi";
 import { useWindowWidth } from "./utils/useBreakpoint";
+import { usePullToRefresh } from "./utils/usePullToRefresh";
 
 // ── 頁面元件 ──────────────────────────────────────────────
 import GlobalStyles  from "./components/ui/GlobalStyles";
@@ -137,7 +138,14 @@ export default function App() {
   }, []);
 
   // 只在已登入時才載入資料
-  useEffect(() => { if (session) load(); }, [load, session]);
+  // 依賴 user.id 而非整個 session 物件：Supabase token 在背景 refresh 時 session
+  // reference 會改變但 user.id 不變，避免切回 tab 整頁重抓
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (session) load(); }, [load, session?.user?.id]);
+
+  // 行動裝置 / PWA 下拉重整
+  const { pull: ptrPull, refreshing: ptrRefreshing, threshold: ptrThreshold } =
+    usePullToRefresh(load, { disabled: !session });
 
   // ── 資料分組（傳入各子頁面，使用 useMemo 避免不必要重新計算）────────
   const twAssets = useMemo(() => allAssets.filter(a => a.account === "tw"), [allAssets]);
@@ -246,6 +254,29 @@ export default function App() {
   return (
     <>
       <GlobalStyles />
+
+      {/* ── 下拉重整指示器（PWA / mobile）──────────────────── */}
+      {(ptrPull > 0 || ptrRefreshing) && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0,
+          height: ptrRefreshing ? ptrThreshold : ptrPull,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: C.surface2,
+          color: C.textMuted,
+          ...T.caption,
+          zIndex: 9999,
+          transition: ptrRefreshing ? "height 0.2s" : "none",
+          overflow: "hidden",
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          {ptrRefreshing
+            ? "更新中…"
+            : ptrPull >= ptrThreshold
+              ? "放開以更新 ↻"
+              : "下拉以更新 ↓"}
+        </div>
+      )}
+
       <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'Inter','Noto Sans TC',sans-serif" }}>
 
         {/* ── Header（黏性頂部導覽列）──────────────────────── */}
