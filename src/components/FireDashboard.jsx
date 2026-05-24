@@ -107,6 +107,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   const [samIncome,      setSamIncome]      = useState(100);   // 萬/年
   const [samSavingsRate, setSamSavingsRate] = useState(0.30);
   const [samRatio,       setSamRatio]       = useState(0.35);  // 薩繆森比例
+  const [marketReturn,   setMarketReturn]   = useState(0);     // 變動提領：今年市場漲跌
 
   const realRate = rate - inflation; // 實質報酬率（名目 − 通膨），允許 ≤ 0
   const scen     = SCENARIOS.find(s => s.rate === rate)
@@ -264,6 +265,30 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
     }));
     return { lifetimeWealth, humanCapital, targetExposure, stages };
   }, [totalAssets, samAge, samWorkYears, samIncome, samSavingsRate, samRatio]);
+
+  // ── 序列風險視覺化資料（先漲後跌 vs 先跌後漲）─────────────
+  const seqRiskData = useMemo(() => {
+    const GOOD_SEQ = [
+       0.30, 0.25, 0.20, 0.18, 0.15, 0.12, 0.10, 0.05, -0.05, -0.10,
+      -0.15,-0.20,-0.10, 0.05, 0.08, 0.10, 0.08,  0.05,  0.03,  0.05,
+    ];
+    const BAD_SEQ = [...GOOD_SEQ].reverse();
+    const annual = monthly * 12;
+    const sim = (seq) => {
+      let v = fireNum;
+      return [{ year: 0, v: fireNum }, ...seq.map((r, i) => {
+        v = Math.max(0, v * (1 + r) - annual);
+        return { year: i + 1, v: Math.round(v) };
+      })];
+    };
+    const good = sim(GOOD_SEQ);
+    const bad  = sim(BAD_SEQ);
+    return good.map((pt, i) => ({
+      year: pt.year,
+      先漲後跌: pt.v,
+      先跌後漲: bad[i].v,
+    }));
+  }, [fireNum, monthly]);
 
   // 保守情境（用於賣訊比較）
   const conservativeMetrics = useMemo(() => {
@@ -876,6 +901,145 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </div>
         )}
       </div>
+
+      {/* ── 2A 退休前 5 年警示 ──────────────────────────────── */}
+      {(() => {
+        const nearFire = fireProgress.find(p => p.yearsLeft > 0 && p.yearsLeft < 5);
+        if (!nearFire) return null;
+        return (
+          <div style={{
+            background: `${C.orange}18`, border: `1px solid ${C.orange}`,
+            borderRadius: 10, padding: "10px 14px",
+            display: "flex", gap: 10, alignItems: "flex-start",
+          }}>
+            <span style={{ fontSize: 18 }}>⚠️</span>
+            <div>
+              <div style={{ color: C.orange, fontWeight: 600, fontSize: T.body }}>
+                退休前 5 年最脆弱窗口（{nearFire.label} 距 FIRE 約 {nearFire.yearsLeft.toFixed(1)} 年）
+              </div>
+              <div style={{ color: C.textMuted, fontSize: T.caption, marginTop: 4, lineHeight: 1.6 }}>
+                大仁哥建議：此時開始降槓桿，增加 2–3 年現金緩衝。
+                退休後「先跌後漲」可能讓本金在 72 歲就歸零——零，不管漲多少都是零。
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── 2B 序列風險視覺化 ──────────────────────────────── */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ padding: "10px 14px", background: C.surface2 }}>
+          <div style={{ fontSize: T.body, color: C.text, fontWeight: 600 }}>📈 序列風險視覺化</div>
+          <div style={{ fontSize: T.caption, color: C.textMuted, marginTop: 3 }}>
+            同樣平均報酬 ~6%，但退休後「先跌後漲」vs「先漲後跌」結果天差地遠
+          </div>
+        </div>
+        <div style={{ padding: 14 }}>
+          <div style={{ display: "flex", gap: 16, marginBottom: 8, fontSize: T.caption, color: C.textMuted }}>
+            <span><span style={{ color: C.accent }}>●</span> 先漲後跌（好順序）</span>
+            <span><span style={{ color: C.red }}>●</span> 先跌後漲（壞順序）</span>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={seqRiskData} margin={{ top: 4, right: 8, bottom: 0, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+              <XAxis dataKey="year" tick={{ fill: C.textMuted, fontSize: 10 }}
+                     tickFormatter={v => `第${v}年`} interval={4} />
+              <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} width={52}
+                     tickFormatter={v => v >= 1e8 ? `${(v / 1e8).toFixed(0)}億` : v >= 1e4 ? `${(v / 1e4).toFixed(0)}萬` : v} />
+              <Tooltip
+                contentStyle={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 11 }}
+                formatter={(val, name) => [`NT$${fmt(Math.round(val))}`, name]}
+                labelFormatter={l => `第 ${l} 年`}
+              />
+              <Line type="monotone" dataKey="先漲後跌" stroke={C.accent} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="先跌後漲" stroke={C.red}    strokeWidth={2} dot={false} strokeDasharray="5 3" />
+            </LineChart>
+          </ResponsiveContainer>
+          {seqRiskData.length > 0 && (() => {
+            const last = seqRiskData[seqRiskData.length - 1];
+            return (
+              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                <div style={{ flex: 1, background: `${C.accent}12`, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontSize: T.caption, color: C.textMuted }}>好順序 第 20 年</div>
+                  <div style={{ color: C.accent, fontWeight: 700, fontFamily: "monospace" }}>
+                    NT${fmt(last["先漲後跌"])}
+                  </div>
+                </div>
+                <div style={{ flex: 1, background: `${C.red}12`, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontSize: T.caption, color: C.textMuted }}>壞順序 第 20 年</div>
+                  <div style={{ color: C.red, fontWeight: 700, fontFamily: "monospace" }}>
+                    {last["先跌後漲"] === 0 ? "💀 歸零" : `NT$${fmt(last["先跌後漲"])}`}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+          <div style={{ fontSize: 10, color: C.textDim, marginTop: 8, lineHeight: 1.6 }}>
+            以你的 FIRE 數 NT${fmt(fireNum)} 為起始本金，每年提領 NT${fmt(monthly * 12)} 模擬 20 年。
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2C 變動提領計算機 ──────────────────────────────── */}
+      {(() => {
+        const dynSWR =
+          marketReturn <= -0.20 ? 0.03 :
+          marketReturn <   0    ? 0.035 :
+          marketReturn <   0.20 ? swr  : 0.05;
+        const dynAnnual  = Math.round(fireNum * dynSWR);
+        const dynMonthly = Math.round(dynAnnual / 12);
+        const dynColor   = marketReturn <= -0.10 ? C.red : marketReturn >= 0.10 ? C.accent : C.text;
+        return (
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: T.body, color: C.text, fontWeight: 600, marginBottom: 10 }}>
+              📊 變動提領計算機（大仁哥 × 熊市應對）
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: T.caption, color: C.textMuted }}>今年市場漲跌</span>
+                <span style={{ fontSize: T.caption, color: dynColor, fontWeight: 600, fontFamily: "monospace" }}>
+                  {marketReturn >= 0 ? "+" : ""}{(marketReturn * 100).toFixed(0)}%
+                </span>
+              </div>
+              <input
+                type="range" min="-50" max="50" step="1"
+                value={Math.round(marketReturn * 100)}
+                onChange={e => setMarketReturn(Number(e.target.value) / 100)}
+                style={{ width: "100%", accentColor: dynColor }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.textDim }}>
+                <span>-50%</span><span>0</span><span>+50%</span>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+              <div style={{ background: C.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 2 }}>建議提領率</div>
+                <div style={{ color: dynColor, fontWeight: 700, fontSize: 20, fontFamily: "monospace" }}>
+                  {(dynSWR * 100).toFixed(1)}%
+                </div>
+              </div>
+              <div style={{ background: C.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 2 }}>年領</div>
+                <div style={{ color: C.text, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>
+                  NT${fmt(dynAnnual)}
+                </div>
+              </div>
+              <div style={{ background: C.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 2 }}>月領</div>
+                <div style={{ color: C.text, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>
+                  NT${fmt(dynMonthly)}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 10, color: C.textDim, lineHeight: 1.8 }}>
+              規則：跌 ≥20% → <span style={{ color: C.red }}>3%</span>（護本）&nbsp;·&nbsp;
+              跌 0–20% → <span style={{ color: C.orange }}>3.5%</span>（保守）&nbsp;·&nbsp;
+              持平 → <span style={{ color: C.text }}>{(swr * 100).toFixed(1)}%</span>（你的 SWR）&nbsp;·&nbsp;
+              漲 ≥20% → <span style={{ color: C.accent }}>5%</span>（可提升）
+            </div>
+          </div>
+        );
+      })()}
 
       </>)}
     </div>
