@@ -714,35 +714,43 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       </div>
 
       {/* ── 505 生生不息退休模式 ──────────────────────────── */}
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: T.body, color: C.text, fontWeight: 600 }}>
-            🏖 505 生生不息（黃柏仁 × 大仁哥改良版）
-          </span>
-        </div>
-        <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 10 }}>
-          以你的 FIRE 數 NT${fmt(fireNum)} 為基礎，50% 投入正二 / 50% 生活費存放 / 年提 5%
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div style={{ background: C.surface2, borderRadius: 8, padding: 10 }}>
-            <div style={{ color: C.textMuted, fontSize: T.caption, marginBottom: 4 }}>原型版（0050）</div>
-            <div style={{ color: C.text, fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>63.6%</div>
-            <div style={{ color: C.textMuted, fontSize: T.caption }}>10 年滾動成功率</div>
+      {(() => {
+        // 505 自帶固定 5% 提領率，與上方 SWR 選擇器無關
+        const fireNum505 = Math.round(monthly * 12 / 0.05);
+        return (
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: T.body, color: C.text, fontWeight: 600 }}>
+              🏖 505 生生不息（黃柏仁 × 大仁哥改良版）
+            </span>
           </div>
-          <div style={{ background: C.surface2, borderRadius: 8, padding: 10, border: `1px solid ${C.accent}` }}>
-            <div style={{ color: C.accent, fontSize: T.caption, marginBottom: 4 }}>正二版（00631L）★</div>
-            <div style={{ color: C.accent, fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>90.9%</div>
-            <div style={{ color: C.textMuted, fontSize: T.caption }}>10 年滾動成功率</div>
+          <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 10, lineHeight: 1.6 }}>
+            這是獨立退休模型，<strong style={{ color: C.text }}>固定使用 5% 提領率</strong>，
+            與上方 SWR 選擇器無關。所需本金 NT${fmt(fireNum505)}，
+            對半分：一半投入、一半放現金撐 10 年。
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div style={{ background: C.surface2, borderRadius: 8, padding: 10 }}>
+              <div style={{ color: C.textMuted, fontSize: T.caption, marginBottom: 4 }}>原型版（0050）</div>
+              <div style={{ color: C.text, fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>63.6%</div>
+              <div style={{ color: C.textMuted, fontSize: T.caption }}>10 年滾動成功率</div>
+            </div>
+            <div style={{ background: C.surface2, borderRadius: 8, padding: 10, border: `1px solid ${C.accent}` }}>
+              <div style={{ color: C.accent, fontSize: T.caption, marginBottom: 4 }}>正二版（00631L）★</div>
+              <div style={{ color: C.accent, fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>90.9%</div>
+              <div style={{ color: C.textMuted, fontSize: T.caption }}>10 年滾動成功率</div>
+            </div>
+          </div>
+          <div style={{ fontSize: T.caption, color: C.textMuted, lineHeight: 1.7 }}>
+            投入 NT${fmt(Math.round(fireNum505 * 0.5))}（正二）
+            {" · "}生活費 NT${fmt(Math.round(fireNum505 * 0.5))}（共 10 年）
+            {" · "}年領 NT${fmt(Math.round(monthly * 12))}（= 月支出 × 12）
+            <br />
+            <span style={{ color: C.gold }}>⚠ 最大風險：第 10 年遇系統性崩盤 → 投資未翻倍 + 生活費耗盡</span>
           </div>
         </div>
-        <div style={{ fontSize: T.caption, color: C.textMuted, lineHeight: 1.7 }}>
-          投入 NT${fmt(Math.round(fireNum * 0.5))}（正二）
-          {" · "}生活費 NT${fmt(Math.round(fireNum * 0.5))}（共 10 年）
-          {" · "}年領 NT${fmt(Math.round(fireNum * 0.05))}
-          <br />
-          <span style={{ color: C.gold }}>⚠ 最大風險：第 10 年遇系統性崩盤 → 投資未翻倍 + 生活費耗盡</span>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ── 薩繆森比例計算機 ─────────────────────────────── */}
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
