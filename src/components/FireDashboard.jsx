@@ -98,10 +98,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   const [inflation, setInflation] = useState(0.02);   // 預設通膨 2%
   const [monthly,   setMonthly]   = useState(45000);  // 預設 Base 45K/月
   const [swr,       setSwr]       = useState(0.030);  // 預設 3%（33歲適合）
-  const [subTab,    setSubTab]    = useState("dashboard"); // "dashboard" | "cashflow"
+  const [subTab,    setSubTab]    = useState("path"); // "path" | "retirement" | "risk" | "cashflow"
 
   // ── 薩繆森比例計算機 state ────────────────────────────────────
-  const [samOpen,        setSamOpen]        = useState(false);
   const [samAge,         setSamAge]         = useState(30);
   const [samWorkYears,   setSamWorkYears]   = useState(35);
   const [samIncome,      setSamIncome]      = useState(100);   // 萬/年
@@ -310,28 +309,26 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   return (
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
-      {/* ── 子分頁切換 ──────────────────────────────────────── */}
+      {/* ── Tab 切換列 ──────────────────────────────────────── */}
       <div style={{
-        display: "flex", gap: 6, alignItems: "center",
+        display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
         paddingBottom: 4, borderBottom: `1px solid ${C.border}`,
       }}>
-        <CtrlBtn active={subTab === "dashboard"} color={C.accent}
-          onClick={() => setSubTab("dashboard")}>
-          📊 FIRE 儀表板
-        </CtrlBtn>
-        <CtrlBtn active={subTab === "cashflow"} color={C.blue}
-          onClick={() => setSubTab("cashflow")}>
-          💰 現金流紀錄
-        </CtrlBtn>
+        <CtrlBtn active={subTab === "path"}       color={C.accent} onClick={() => setSubTab("path")}>📊 路徑試算</CtrlBtn>
+        <CtrlBtn active={subTab === "retirement"} color={C.blue}   onClick={() => setSubTab("retirement")}>🏖 退休規劃</CtrlBtn>
+        <CtrlBtn active={subTab === "risk"}       color={C.orange} onClick={() => setSubTab("risk")}>⚡ 退休風險</CtrlBtn>
+        <CtrlBtn active={subTab === "cashflow"}   color={C.gold}   onClick={() => setSubTab("cashflow")}>💰 現金流</CtrlBtn>
       </div>
 
+      {/* ── 現金流紀錄 Tab ──────────────────────────────────── */}
       {subTab === "cashflow" && (
         <CashflowManager cashflow={cashflow} reload={reload} />
       )}
 
-      {subTab === "dashboard" && (<>
+      {/* ── 路徑試算 Tab ────────────────────────────────────── */}
+      {subTab === "path" && (<>
 
-      {/* ── 頁面說明句 ───────────────────────────────────────── */}
+      {/* 頁面說明句 */}
       <div style={{
         background: C.surface3, border: `1px solid ${C.border}`,
         borderRadius: 12, padding: "14px 18px",
@@ -355,7 +352,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         )}
       </div>
 
-      {/* ── P-007 訊號 Banner ────────────────────────────────── */}
+      {/* P-007 訊號 Banner */}
       {signalState.type !== "NEUTRAL" && (() => {
         const cfg = {
           SELL_SIGNAL: { icon: "📉", label: "賣訊已觸發", sub: "P-007 KDJ＋布林雙確認賣出訊號成立，建議對照保守情境評估 FIRE 進度", col: C.red   },
@@ -411,9 +408,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         );
       })()}
 
-      {/* ── 控制列 ──────────────────────────────────────────── */}
+      {/* 控制列 */}
       <Card style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-        {/* Row 1: 報酬率滑桿 + 快捷點 */}
+        {/* Row 1: 報酬率 */}
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>報酬率</span>
           <input
@@ -437,7 +434,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </span>
         </div>
 
-        {/* Row 2: 月支出滑桿（含 Lean/Base/Fat 快捷點）*/}
+        {/* Row 2: 月支出 */}
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>月支出</span>
           <input
@@ -447,14 +444,9 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             step={MONTHLY_STEP}
             value={monthly}
             onChange={e => setMonthly(Number(e.target.value))}
-            style={{
-              flex: 1, minWidth: 180, maxWidth: 360,
-              accentColor: mode.color, cursor: "pointer",
-            }}
+            style={{ flex: 1, minWidth: 180, maxWidth: 360, accentColor: mode.color, cursor: "pointer" }}
           />
-          <span style={{
-            ...T.mono, fontSize: 12, fontWeight: 700, color: mode.color, minWidth: 110,
-          }}>
+          <span style={{ ...T.mono, fontSize: 12, fontWeight: 700, color: mode.color, minWidth: 110 }}>
             NT${fmt(monthly)}/月
           </span>
           <span style={{ fontSize: 10, color: C.textDim }}>（{mode.label}）</span>
@@ -498,7 +490,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </span>
         </div>
 
-        {/* Row 4: 退休提領率 */}
+        {/* Row 4: 提領率 */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 10, color: C.textDim, width: 56, flexShrink: 0 }}>提領率</span>
           {SWR_OPTIONS.map(o => (
@@ -520,7 +512,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         </div>
       </Card>
 
-      {/* ── 現金流摘要條 ─────────────────────────────────────── */}
+      {/* 現金流摘要條 */}
       {cashflowStats ? (
         <div className="wos-grid-fire-kpi" style={{
           padding: "12px 16px",
@@ -542,7 +534,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         </div>
       )}
 
-      {/* ── KPI 卡片 ─────────────────────────────────────────── */}
+      {/* KPI × 4 */}
       <div className="wos-grid-fire-kpi">
         <KPI
           label={`Coast FIRE（${mode.label}）`}
@@ -573,7 +565,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         />
       </div>
 
-      {/* ── 成長預測圖 ────────────────────────────────────────── */}
+      {/* 25 年成長圖 */}
       <Card style={{ padding: "20px 20px 12px" }}>
         <div style={{
           ...T.section, color: C.text,
@@ -614,7 +606,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         </ResponsiveContainer>
       </Card>
 
-      {/* ── FIRE 進度 + 負債里程碑 ───────────────────────────── */}
+      {/* FIRE 進度 + 負債里程碑 */}
       <div className="wos-grid-fire-main">
 
         {/* FIRE 三目標進度條 */}
@@ -738,9 +730,13 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         </div>
       </div>
 
-      {/* ── 505 生生不息退休模式 ──────────────────────────── */}
+      </>)}
+
+      {/* ── 退休規劃 Tab ────────────────────────────────────── */}
+      {subTab === "retirement" && (<>
+
+      {/* 505 生生不息 */}
       {(() => {
-        // 505 自帶固定 5% 提領率，與上方 SWR 選擇器無關
         const fireNum505 = Math.round(monthly * 12 / 0.05);
         return (
         <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
@@ -751,7 +747,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </div>
           <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 10, lineHeight: 1.6 }}>
             這是獨立退休模型，<strong style={{ color: C.text }}>固定使用 5% 提領率</strong>，
-            與上方 SWR 選擇器無關。所需本金 NT${fmt(fireNum505)}，
+            與路徑試算的 SWR 選擇器無關。所需本金 NT${fmt(fireNum505)}，
             對半分：一半投入、一半放現金撐 10 年。
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
@@ -777,152 +773,141 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         );
       })()}
 
-      {/* ── 薩繆森比例計算機 ─────────────────────────────── */}
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
-        <div
-          style={{
-            padding: "10px 14px", display: "flex", justifyContent: "space-between",
-            cursor: "pointer", background: C.surface2,
-          }}
-          onClick={() => setSamOpen(o => !o)}
-        >
-          <span style={{ fontSize: T.body, color: C.text, fontWeight: 600 }}>
-            📐 薩繆森比例計算機（大仁哥生命週期）
-          </span>
-          <span style={{ color: C.textMuted }}>{samOpen ? "▲" : "▼"}</span>
+      {/* 薩繆森比例計算機（直接展開） */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+        <div style={{ fontSize: T.body, color: C.text, fontWeight: 600, marginBottom: 12 }}>
+          📐 薩繆森比例計算機（大仁哥生命週期）
         </div>
 
-        {samOpen && (
-          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* 說明 */}
+        <div style={{
+          background: C.blue + "12", border: `1px solid ${C.blue}30`,
+          borderRadius: 8, padding: "10px 12px", marginBottom: 12,
+          fontSize: 11, color: C.textMuted, lineHeight: 1.75,
+        }}>
+          <div style={{ color: C.blue, fontWeight: 700, marginBottom: 4, fontSize: 12 }}>這在算什麼？</div>
+          <div>
+            傳統定期定額是「頭輕腳重」——年輕時投入少，大筆資金在老年才進場，
+            真正投資 30 年的錢其實只有一小部分。
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <strong style={{ color: C.text }}>終身財富</strong>
+            {" "}= 未來薪水存款（人力資本）＋現有資產。這才是你真正在管理的總財富。
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <strong style={{ color: C.text }}>薩繆森比例</strong>
+            {" "}= 「假如今天就拿到終身財富，你願意放多少在股票上？」這個比例決定你一生應維持的股票曝險量。
+          </div>
+          <div style={{ marginTop: 6 }}>
+            年輕時金融資本少 → 光靠現有資產達不到目標曝險 → 需要<strong style={{ color: C.accent }}> 槓桿補足</strong>。
+            隨年齡增長，資產變多，所需槓桿自然降低直至歸零。
+          </div>
+        </div>
 
-            {/* ── 說明區塊 ── */}
-            <div style={{
-              background: C.blue + "12", border: `1px solid ${C.blue}30`,
-              borderRadius: 8, padding: "10px 12px",
-              fontSize: 11, color: C.textMuted, lineHeight: 1.75,
-            }}>
-              <div style={{ color: C.blue, fontWeight: 700, marginBottom: 4, fontSize: 12 }}>
-                這在算什麼？
-              </div>
-              <div>
-                傳統定期定額是「頭輕腳重」——年輕時投入少，大筆資金在老年才進場，
-                真正投資 30 年的錢其實只有一小部分。
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <strong style={{ color: C.text }}>終身財富</strong>
-                {" "}= 未來薪水存款（人力資本）＋現有資產。這才是你真正在管理的總財富。
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <strong style={{ color: C.text }}>薩繆森比例</strong>
-                {" "}= 「假如今天就拿到終身財富，你願意放多少在股票上？」這個比例決定你一生應維持的股票曝險量。
-              </div>
-              <div style={{ marginTop: 6 }}>
-                年輕時金融資本少 → 光靠現有資產達不到目標曝險 → 需要<strong style={{ color: C.accent }}> 槓桿補足</strong>。
-                隨年齡增長，資產變多，所需槓桿自然降低直至歸零。
-              </div>
-            </div>
-
-            {/* 輸入滑桿 */}
-            {[
-              { label: "目前年齡",   val: samAge,         set: setSamAge,         min: 20, max: 55, step: 1,    fmt: v => `${v} 歲` },
-              { label: "剩餘工作年", val: samWorkYears,   set: setSamWorkYears,   min: 1,  max: 40, step: 1,    fmt: v => `${v} 年` },
-              { label: "年收入",     val: samIncome,      set: setSamIncome,      min: 30, max: 500,step: 10,   fmt: v => `${v} 萬` },
-              { label: "儲蓄率",     val: samSavingsRate, set: setSamSavingsRate, min: 0.1,max: 0.7,step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
-              { label: "股票佔比\n（薩繆森）", val: samRatio, set: setSamRatio, min: 0.1, max: 0.8, step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
-            ].map(({ label, val, set, min, max, step, fmt: fmtFn }) => (
-              <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: T.caption, color: C.textMuted, width: 80, flexShrink: 0 }}>{label}</span>
-                <input
-                  type="range" min={min} max={max} step={step}
-                  value={val} onChange={e => set(Number(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ fontSize: T.caption, color: C.text, width: 52, textAlign: "right", fontFamily: "monospace" }}>
-                  {fmtFn(val)}
-                </span>
-              </div>
-            ))}
-
-            {/* 輸出：終身財富 + 目標曝險 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 4 }}>
-              <div style={{ background: C.surface2, borderRadius: 8, padding: "10px 12px" }}>
-                <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 4 }}>終身財富</div>
-                <div style={{ color: C.blue, fontWeight: 700, fontSize: 16, fontFamily: "monospace" }}>
-                  {samuelson.lifetimeWealth.toFixed(0)} 萬
-                </div>
-                <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>
-                  人力資本 {samuelson.humanCapital.toFixed(0)} + 現有 {(totalAssets / 10000).toFixed(0)} 萬
-                </div>
-              </div>
-              <div style={{ background: C.surface2, borderRadius: 8, padding: "10px 12px" }}>
-                <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 4 }}>目標股票曝險</div>
-                <div style={{ color: C.accent, fontWeight: 700, fontSize: 16, fontFamily: "monospace" }}>
-                  {samuelson.targetExposure.toFixed(0)} 萬
-                </div>
-                <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>
-                  薩繆森 {(samRatio * 100).toFixed(0)}% × 終身財富
-                </div>
-              </div>
-            </div>
-
-            {/* 各階段建議槓桿倍數 */}
-            <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 2 }}>
-              各階段「達到目標曝險」所需的槓桿倍數
-              <span style={{ color: C.textDim, marginLeft: 6, fontSize: 10 }}>
-                — 倍數高不等於風險高，因為本金也小
+        {/* 輸入滑桿 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+          {[
+            { label: "目前年齡",   val: samAge,         set: setSamAge,         min: 20, max: 55, step: 1,    fmt: v => `${v} 歲` },
+            { label: "剩餘工作年", val: samWorkYears,   set: setSamWorkYears,   min: 1,  max: 40, step: 1,    fmt: v => `${v} 年` },
+            { label: "年收入",     val: samIncome,      set: setSamIncome,      min: 30, max: 500,step: 10,   fmt: v => `${v} 萬` },
+            { label: "儲蓄率",     val: samSavingsRate, set: setSamSavingsRate, min: 0.1,max: 0.7,step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
+            { label: "股票佔比\n（薩繆森）", val: samRatio, set: setSamRatio, min: 0.1, max: 0.8, step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
+          ].map(({ label, val, set, min, max, step, fmt: fmtFn }) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: T.caption, color: C.textMuted, width: 80, flexShrink: 0 }}>{label}</span>
+              <input
+                type="range" min={min} max={max} step={step}
+                value={val} onChange={e => set(Number(e.target.value))}
+                style={{ flex: 1 }}
+              />
+              <span style={{ fontSize: T.caption, color: C.text, width: 52, textAlign: "right", fontFamily: "monospace" }}>
+                {fmtFn(val)}
               </span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {samuelson.stages.map(({ label, assets, multiple }) => {
-                const lv = multiple === null ? null :
-                  multiple < 0.5 ? 1 : multiple < 1.0 ? 2 : multiple <= 1.3 ? 3 :
-                  multiple < 2.0 ? 4 : multiple <= 2.3 ? 5 : 6;
-                const lvColor = lv === null ? C.textDim :
-                  [C.textMuted, C.blue, C.accent, C.gold, C.orange, C.red][lv - 1] ?? C.red;
-                return (
-                  <div key={label} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "6px 10px", background: C.surface3, borderRadius: 7,
-                  }}>
-                    <span style={{ color: C.text, fontSize: T.caption }}>{label}</span>
-                    <span style={{ color: C.textDim, fontSize: T.caption }}>金融資本 {assets.toFixed(0)} 萬</span>
-                    <span style={{ color: lvColor, fontWeight: 700, fontSize: T.caption, fontFamily: "monospace" }}>
-                      {multiple !== null ? `${multiple.toFixed(1)}x` : "—"}
-                      {lv !== null ? ` Lv.${lv}` : ""}
-                    </span>
-                  </div>
-                );
-              })}
+          ))}
+        </div>
+
+        {/* 終身財富 + 目標曝險 */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+          <div style={{ background: C.surface2, borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 4 }}>終身財富</div>
+            <div style={{ color: C.blue, fontWeight: 700, fontSize: 16, fontFamily: "monospace" }}>
+              {samuelson.lifetimeWealth.toFixed(0)} 萬
             </div>
-            <div style={{ fontSize: 10, color: C.textDim, lineHeight: 1.6 }}>
-              大仁哥本人：等級六（＞200%）含信貸＋房貸＋正二多重槓桿。
-              建議對照 Overview 的實際曝險倍率，確認目前處於哪個生命週期等級。
+            <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>
+              人力資本 {samuelson.humanCapital.toFixed(0)} + 現有 {(totalAssets / 10000).toFixed(0)} 萬
+            </div>
+          </div>
+          <div style={{ background: C.surface2, borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 4 }}>目標股票曝險</div>
+            <div style={{ color: C.accent, fontWeight: 700, fontSize: 16, fontFamily: "monospace" }}>
+              {samuelson.targetExposure.toFixed(0)} 萬
+            </div>
+            <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>
+              薩繆森 {(samRatio * 100).toFixed(0)}% × 終身財富
+            </div>
+          </div>
+        </div>
+
+        {/* 各階段槓桿 */}
+        <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 6 }}>
+          各階段「達到目標曝險」所需的槓桿倍數
+          <span style={{ color: C.textDim, marginLeft: 6, fontSize: 10 }}>— 倍數高不等於風險高，因為本金也小</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          {samuelson.stages.map(({ label, assets, multiple }) => {
+            const lv = multiple === null ? null :
+              multiple < 0.5 ? 1 : multiple < 1.0 ? 2 : multiple <= 1.3 ? 3 :
+              multiple < 2.0 ? 4 : multiple <= 2.3 ? 5 : 6;
+            const lvColor = lv === null ? C.textDim :
+              [C.textMuted, C.blue, C.accent, C.gold, C.orange, C.red][lv - 1] ?? C.red;
+            return (
+              <div key={label} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "6px 10px", background: C.surface3, borderRadius: 7,
+              }}>
+                <span style={{ color: C.text, fontSize: T.caption }}>{label}</span>
+                <span style={{ color: C.textDim, fontSize: T.caption }}>金融資本 {assets.toFixed(0)} 萬</span>
+                <span style={{ color: lvColor, fontWeight: 700, fontSize: T.caption, fontFamily: "monospace" }}>
+                  {multiple !== null ? `${multiple.toFixed(1)}x` : "—"}
+                  {lv !== null ? ` Lv.${lv}` : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: C.textDim, lineHeight: 1.6, marginBottom: samWorkYears <= 5 ? 12 : 0 }}>
+          大仁哥本人：等級六（＞200%）含信貸＋房貸＋正二多重槓桿。
+          建議對照 Overview 的實際曝險倍率，確認目前處於哪個生命週期等級。
+        </div>
+
+        {/* 退休前 5 年警示（緊接薩繆森之後） */}
+        {samWorkYears <= 5 && (
+          <div style={{
+            background: `${C.orange}18`, border: `1px solid ${C.orange}`,
+            borderRadius: 10, padding: "10px 14px",
+            display: "flex", gap: 10, alignItems: "flex-start",
+          }}>
+            <span style={{ fontSize: 18 }}>⚠️</span>
+            <div>
+              <div style={{ color: C.orange, fontWeight: 600, fontSize: T.body }}>
+                退休前 5 年最脆弱窗口（剩餘工作年：{samWorkYears} 年）
+              </div>
+              <div style={{ color: C.textMuted, fontSize: T.caption, marginTop: 4, lineHeight: 1.6 }}>
+                大仁哥建議：此時開始降槓桿，增加 2–3 年現金緩衝。
+                退休後「先跌後漲」可能讓本金在 72 歲就歸零——零，不管漲多少都是零。
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── 2A 退休前 5 年警示 ──────────────────────────────── */}
-      {samWorkYears <= 5 && (
-        <div style={{
-          background: `${C.orange}18`, border: `1px solid ${C.orange}`,
-          borderRadius: 10, padding: "10px 14px",
-          display: "flex", gap: 10, alignItems: "flex-start",
-        }}>
-          <span style={{ fontSize: 18 }}>⚠️</span>
-          <div>
-            <div style={{ color: C.orange, fontWeight: 600, fontSize: T.body }}>
-              退休前 5 年最脆弱窗口（薩繆森計算機設定：距退休 {samWorkYears} 年）
-            </div>
-            <div style={{ color: C.textMuted, fontSize: T.caption, marginTop: 4, lineHeight: 1.6 }}>
-              大仁哥建議：此時開始降槓桿，增加 2–3 年現金緩衝。
-              退休後「先跌後漲」可能讓本金在 72 歲就歸零——零，不管漲多少都是零。
-            </div>
-          </div>
-        </div>
-      )}
+      </>)}
 
-      {/* ── 2B 序列風險視覺化 ──────────────────────────────── */}
+      {/* ── 退休風險 Tab ────────────────────────────────────── */}
+      {subTab === "risk" && (<>
+
+      {/* 序列風險視覺化 */}
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
         <div style={{ padding: "10px 14px", background: C.surface2 }}>
           <div style={{ fontSize: T.body, color: C.text, fontWeight: 600 }}>📈 序列風險視覺化</div>
@@ -976,7 +961,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
         </div>
       </div>
 
-      {/* ── 2C 變動提領計算機 ──────────────────────────────── */}
+      {/* 變動提領計算機 */}
       {(() => {
         const dynSWR =
           marketReturn <= -0.20 ? 0.03 :
@@ -1038,6 +1023,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       })()}
 
       </>)}
+
     </div>
   );
 }
