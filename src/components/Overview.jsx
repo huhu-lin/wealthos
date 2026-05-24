@@ -33,6 +33,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
     twTotal, usTotal, cryptoTotal, otherTotal,
     totalAssets, totalLiab, netWorth, leverage, debtRatio,
     actualExposure, actualLeverage,
+    leverageLevel, LEVEL_COLOR, LEVEL_LABEL, hasDoubleETF,
     totalCost, totalPnl, totalPnlPct,
   } = useMemo(() => {
     const tw = twAssets.reduce((s, x) => s + x.value_twd, 0);
@@ -50,6 +51,20 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       (s, x) => s + (x.value_twd || 0) * (x.leverage_ratio || 1), 0
     ) + crypto + other;
     const actLev = net > 0 ? exposure / net : 0;
+
+    // 大仁哥 6 等級分級
+    const leverageLevel =
+      actLev < 0.5  ? 1 :
+      actLev < 1.0  ? 2 :
+      actLev <= 1.3 ? 3 :
+      actLev < 2.0  ? 4 :
+      actLev <= 2.3 ? 5 : 6;
+    const LEVEL_COLOR = { 1: C.textMuted, 2: C.blue, 3: C.accent, 4: C.gold, 5: C.orange, 6: C.red };
+    const LEVEL_LABEL = {
+      1: "保守", 2: "接受槓桿", 3: "100%曝險",
+      4: "積極", 5: "200%生命週期", 6: "極限(>200%)",
+    };
+    const hasDoubleETF = [...twAssets, ...usAssets].some(x => (x.leverage_ratio || 1) >= 2);
 
     // 未實現損益
     const cost = [...twAssets, ...usAssets, ...cryptoAssets]
@@ -72,6 +87,10 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       debtRatio: debt,
       actualExposure: exposure,
       actualLeverage: actLev,
+      leverageLevel,
+      LEVEL_COLOR,
+      LEVEL_LABEL,
+      hasDoubleETF,
       totalCost: cost,
       totalPnl: pnl,
       totalPnlPct: pnlPct,
@@ -269,7 +288,18 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       {/* ── KPI 指標格 ───────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
         <KPI label="財務槓桿"   value={leverage.toFixed(2) + "x"}      prefix="" color={C.gold}     sub={`負債比 ${pct(debtRatio)}`} />
-        <KPI label="實際曝險倍率" value={actualLeverage.toFixed(2) + "x"} prefix="" color={C.orange}   sub="含ETF內含槓桿" />
+        <KPI
+          label="實際曝險倍率"
+          value={`Lv.${leverageLevel}  ${actualLeverage.toFixed(2)}x`}
+          prefix=""
+          color={LEVEL_COLOR[leverageLevel]}
+          sub={[
+            LEVEL_LABEL[leverageLevel],
+            hasDoubleETF ? "⚠ 含正二，帳面 × 2 = 真實曝險" : null,
+            leverageLevel >= 6 ? "綠角：確認流動性是否足夠？" : null,
+          ].filter(Boolean).join(" · ")}
+          style={leverageLevel >= 6 ? { border: `1px solid ${C.red}` } : undefined}
+        />
         <KPI label="匯率 USD/TWD" value={usdRate.toFixed(2)}             prefix="" color={C.textMuted} />
       </div>
 

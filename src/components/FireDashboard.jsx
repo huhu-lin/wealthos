@@ -100,6 +100,14 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
   const [swr,       setSwr]       = useState(0.030);  // 預設 3%（33歲適合）
   const [subTab,    setSubTab]    = useState("dashboard"); // "dashboard" | "cashflow"
 
+  // ── 薩繆森比例計算機 state ────────────────────────────────────
+  const [samOpen,        setSamOpen]        = useState(false);
+  const [samAge,         setSamAge]         = useState(30);
+  const [samWorkYears,   setSamWorkYears]   = useState(35);
+  const [samIncome,      setSamIncome]      = useState(100);   // 萬/年
+  const [samSavingsRate, setSamSavingsRate] = useState(0.30);
+  const [samRatio,       setSamRatio]       = useState(0.35);  // 薩繆森比例
+
   const realRate = rate - inflation; // 實質報酬率（名目 − 通膨），允許 ≤ 0
   const scen     = SCENARIOS.find(s => s.rate === rate)
                  ?? { id: "custom", label: `自訂 ${(rate * 100).toFixed(1)}%`, rate, color: C.text };
@@ -239,6 +247,23 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
     if (loadSigs.length > 0) return { type: "LOADING",      tickers: loadSigs };
     return { type: "NEUTRAL" };
   }, [strategies]);
+
+  // ── 薩繆森比例計算機 ─────────────────────────────────────────
+  const samuelson = useMemo(() => {
+    const currentAssets = totalAssets / 10000; // 換算萬
+    const humanCapital  = samIncome * samSavingsRate * samWorkYears;
+    const lifetimeWealth = humanCapital + currentAssets;
+    const targetExposure = lifetimeWealth * samRatio;
+    const stages = [
+      { label: `${samAge}歲（現在）`, assets: currentAssets },
+      { label: `${samAge + 10}歲`,   assets: currentAssets + samIncome * samSavingsRate * 10 },
+      { label: `${samAge + 20}歲`,   assets: currentAssets + samIncome * samSavingsRate * 20 },
+    ].map(s => ({
+      ...s,
+      multiple: s.assets > 0 ? targetExposure / s.assets : null,
+    }));
+    return { lifetimeWealth, humanCapital, targetExposure, stages };
+  }, [totalAssets, samAge, samWorkYears, samIncome, samSavingsRate, samRatio]);
 
   // 保守情境（用於賣訊比較）
   const conservativeMetrics = useMemo(() => {
@@ -686,6 +711,129 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
           </Card>
 
         </div>
+      </div>
+
+      {/* ── 505 生生不息退休模式 ──────────────────────────── */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: T.body, color: C.text, fontWeight: 600 }}>
+            🏖 505 生生不息（黃柏仁 × 大仁哥改良版）
+          </span>
+        </div>
+        <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 10 }}>
+          以你的 FIRE 數 NT${fmt(fireNum)} 為基礎，50% 投入正二 / 50% 生活費存放 / 年提 5%
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div style={{ background: C.surface2, borderRadius: 8, padding: 10 }}>
+            <div style={{ color: C.textMuted, fontSize: T.caption, marginBottom: 4 }}>原型版（0050）</div>
+            <div style={{ color: C.text, fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>63.6%</div>
+            <div style={{ color: C.textMuted, fontSize: T.caption }}>10 年滾動成功率</div>
+          </div>
+          <div style={{ background: C.surface2, borderRadius: 8, padding: 10, border: `1px solid ${C.accent}` }}>
+            <div style={{ color: C.accent, fontSize: T.caption, marginBottom: 4 }}>正二版（00631L）★</div>
+            <div style={{ color: C.accent, fontSize: 22, fontWeight: 700, fontFamily: "monospace" }}>90.9%</div>
+            <div style={{ color: C.textMuted, fontSize: T.caption }}>10 年滾動成功率</div>
+          </div>
+        </div>
+        <div style={{ fontSize: T.caption, color: C.textMuted, lineHeight: 1.7 }}>
+          投入 NT${fmt(Math.round(fireNum * 0.5))}（正二）
+          {" · "}生活費 NT${fmt(Math.round(fireNum * 0.5))}（共 10 年）
+          {" · "}年領 NT${fmt(Math.round(fireNum * 0.05))}
+          <br />
+          <span style={{ color: C.gold }}>⚠ 最大風險：第 10 年遇系統性崩盤 → 投資未翻倍 + 生活費耗盡</span>
+        </div>
+      </div>
+
+      {/* ── 薩繆森比例計算機 ─────────────────────────────── */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+        <div
+          style={{
+            padding: "10px 14px", display: "flex", justifyContent: "space-between",
+            cursor: "pointer", background: C.surface2,
+          }}
+          onClick={() => setSamOpen(o => !o)}
+        >
+          <span style={{ fontSize: T.body, color: C.text, fontWeight: 600 }}>
+            📐 薩繆森比例計算機（大仁哥生命週期）
+          </span>
+          <span style={{ color: C.textMuted }}>{samOpen ? "▲" : "▼"}</span>
+        </div>
+
+        {samOpen && (
+          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* 輸入滑桿 */}
+            {[
+              { label: "目前年齡",   val: samAge,         set: setSamAge,         min: 20, max: 55, step: 1,    fmt: v => `${v} 歲` },
+              { label: "剩餘工作年", val: samWorkYears,   set: setSamWorkYears,   min: 5,  max: 40, step: 1,    fmt: v => `${v} 年` },
+              { label: "年收入",     val: samIncome,      set: setSamIncome,      min: 30, max: 500,step: 10,   fmt: v => `${v} 萬` },
+              { label: "儲蓄率",     val: samSavingsRate, set: setSamSavingsRate, min: 0.1,max: 0.7,step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
+              { label: "薩繆森比例", val: samRatio,       set: setSamRatio,       min: 0.1,max: 0.8,step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
+            ].map(({ label, val, set, min, max, step, fmt: fmtFn }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: T.caption, color: C.textMuted, width: 80, flexShrink: 0 }}>{label}</span>
+                <input
+                  type="range" min={min} max={max} step={step}
+                  value={val} onChange={e => set(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: T.caption, color: C.text, width: 52, textAlign: "right", fontFamily: "monospace" }}>
+                  {fmtFn(val)}
+                </span>
+              </div>
+            ))}
+
+            {/* 輸出：終身財富 + 目標曝險 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 4 }}>
+              <div style={{ background: C.surface2, borderRadius: 8, padding: "10px 12px" }}>
+                <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 4 }}>終身財富</div>
+                <div style={{ color: C.blue, fontWeight: 700, fontSize: 16, fontFamily: "monospace" }}>
+                  {samuelson.lifetimeWealth.toFixed(0)} 萬
+                </div>
+                <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>
+                  人力資本 {samuelson.humanCapital.toFixed(0)} + 現有 {(totalAssets / 10000).toFixed(0)} 萬
+                </div>
+              </div>
+              <div style={{ background: C.surface2, borderRadius: 8, padding: "10px 12px" }}>
+                <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 4 }}>目標股票曝險</div>
+                <div style={{ color: C.accent, fontWeight: 700, fontSize: 16, fontFamily: "monospace" }}>
+                  {samuelson.targetExposure.toFixed(0)} 萬
+                </div>
+                <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>
+                  薩繆森 {(samRatio * 100).toFixed(0)}% × 終身財富
+                </div>
+              </div>
+            </div>
+
+            {/* 各階段建議槓桿倍數 */}
+            <div style={{ fontSize: T.caption, color: C.textMuted, marginBottom: 2 }}>各階段所需槓桿倍數</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {samuelson.stages.map(({ label, assets, multiple }) => {
+                const lv = multiple === null ? null :
+                  multiple < 0.5 ? 1 : multiple < 1.0 ? 2 : multiple <= 1.3 ? 3 :
+                  multiple < 2.0 ? 4 : multiple <= 2.3 ? 5 : 6;
+                const lvColor = lv === null ? C.textDim :
+                  [C.textMuted, C.blue, C.accent, C.gold, C.orange, C.red][lv - 1] ?? C.red;
+                return (
+                  <div key={label} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "6px 10px", background: C.surface3, borderRadius: 7,
+                  }}>
+                    <span style={{ color: C.text, fontSize: T.caption }}>{label}</span>
+                    <span style={{ color: C.textDim, fontSize: T.caption }}>金融資本 {assets.toFixed(0)} 萬</span>
+                    <span style={{ color: lvColor, fontWeight: 700, fontSize: T.caption, fontFamily: "monospace" }}>
+                      {multiple !== null ? `${multiple.toFixed(1)}x` : "—"}
+                      {lv !== null ? ` Lv.${lv}` : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10, color: C.textDim, lineHeight: 1.6 }}>
+              大仁哥本人：等級六（＞200%）含信貸＋房貸＋正二多重槓桿。
+              建議對照 Overview 的實際曝險倍率，確認目前處於哪個生命週期等級。
+            </div>
+          </div>
+        )}
       </div>
 
       </>)}
