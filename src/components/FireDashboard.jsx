@@ -825,7 +825,7 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
             {/* 輸入滑桿 */}
             {[
               { label: "目前年齡",   val: samAge,         set: setSamAge,         min: 20, max: 55, step: 1,    fmt: v => `${v} 歲` },
-              { label: "剩餘工作年", val: samWorkYears,   set: setSamWorkYears,   min: 5,  max: 40, step: 1,    fmt: v => `${v} 年` },
+              { label: "剩餘工作年", val: samWorkYears,   set: setSamWorkYears,   min: 1,  max: 40, step: 1,    fmt: v => `${v} 年` },
               { label: "年收入",     val: samIncome,      set: setSamIncome,      min: 30, max: 500,step: 10,   fmt: v => `${v} 萬` },
               { label: "儲蓄率",     val: samSavingsRate, set: setSamSavingsRate, min: 0.1,max: 0.7,step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
               { label: "股票佔比\n（薩繆森）", val: samRatio, set: setSamRatio, min: 0.1, max: 0.8, step: 0.05, fmt: v => `${(v*100).toFixed(0)}%` },
@@ -903,28 +903,24 @@ export default function FireDashboard({ allAssets, liabilities, cashflow = [], s
       </div>
 
       {/* ── 2A 退休前 5 年警示 ──────────────────────────────── */}
-      {(() => {
-        const nearFire = fireProgress.find(p => p.yearsLeft > 0 && p.yearsLeft < 5);
-        if (!nearFire) return null;
-        return (
-          <div style={{
-            background: `${C.orange}18`, border: `1px solid ${C.orange}`,
-            borderRadius: 10, padding: "10px 14px",
-            display: "flex", gap: 10, alignItems: "flex-start",
-          }}>
-            <span style={{ fontSize: 18 }}>⚠️</span>
-            <div>
-              <div style={{ color: C.orange, fontWeight: 600, fontSize: T.body }}>
-                退休前 5 年最脆弱窗口（{nearFire.label} 距 FIRE 約 {nearFire.yearsLeft.toFixed(1)} 年）
-              </div>
-              <div style={{ color: C.textMuted, fontSize: T.caption, marginTop: 4, lineHeight: 1.6 }}>
-                大仁哥建議：此時開始降槓桿，增加 2–3 年現金緩衝。
-                退休後「先跌後漲」可能讓本金在 72 歲就歸零——零，不管漲多少都是零。
-              </div>
+      {samWorkYears <= 5 && (
+        <div style={{
+          background: `${C.orange}18`, border: `1px solid ${C.orange}`,
+          borderRadius: 10, padding: "10px 14px",
+          display: "flex", gap: 10, alignItems: "flex-start",
+        }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <div>
+            <div style={{ color: C.orange, fontWeight: 600, fontSize: T.body }}>
+              退休前 5 年最脆弱窗口（薩繆森計算機設定：距退休 {samWorkYears} 年）
+            </div>
+            <div style={{ color: C.textMuted, fontSize: T.caption, marginTop: 4, lineHeight: 1.6 }}>
+              大仁哥建議：此時開始降槓桿，增加 2–3 年現金緩衝。
+              退休後「先跌後漲」可能讓本金在 72 歲就歸零——零，不管漲多少都是零。
             </div>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* ── 2B 序列風險視覺化 ──────────────────────────────── */}
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
