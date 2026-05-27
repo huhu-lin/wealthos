@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "WealthOS Frontend (Vite)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "kline-api (FastAPI/uvicorn)",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd kline-api && python3.11 -m uvicorn main:app --reload --port 8000"],
+      "port": 8000
+    }
+  ]
+}

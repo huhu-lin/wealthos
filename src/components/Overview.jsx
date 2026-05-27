@@ -364,7 +364,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
           <div
             key={x.label}
             className="wos-row"
-            onClick={() => onTabChange?.(x.tab)}
+            onClick={() => onTabChange?.("assets", x.tab)}
             style={{
               background: C.surface,
               border: `1px solid ${C.border}`,

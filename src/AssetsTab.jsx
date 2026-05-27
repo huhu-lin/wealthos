@@ -13,8 +13,8 @@ const SUB_TABS = [
   { id: "other",  label: "其他", icon: "🏠"  },
 ];
 
-export default function AssetsTab({ twAssets, usAssets, cryptoAssets, otherAssets, usdRate, reload }) {
-  const [sub, setSub] = useState("tw");
+export default function AssetsTab({ twAssets, usAssets, cryptoAssets, otherAssets, usdRate, reload, initialSub }) {
+  const [sub, setSub] = useState(initialSub ?? "tw");
 
   return (
     <div className="wos-fade" style={{ display: "flex", flexDirection: "column", gap: 16 }}>

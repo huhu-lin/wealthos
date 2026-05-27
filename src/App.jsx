@@ -59,6 +59,7 @@ export default function App() {
 
   // ── 狀態 ─────────────────────────────────────────────────
   const [tab,         setTab]         = useState("overview");
+  const [assetSub,    setAssetSub]    = useState("tw");
   const [allAssets,   setAllAssets]   = useState([]);
   const [liabilities, setLiabilities] = useState([]);
   const [snapshots,   setSnapshots]   = useState([]);
@@ -393,7 +394,7 @@ export default function App() {
               twAssets={twAssets} usAssets={usAssets}
               cryptoAssets={cryptoAssets} otherAssets={otherAssets}
               liabilities={liabilities} snapshots={snapshots} usdRate={usdRate}
-              onTabChange={setTab}
+              onTabChange={(t, sub) => { setTab(t); if (sub) setAssetSub(sub); }}
             />
           )}
           {tab === "assets"   && (
@@ -401,6 +402,7 @@ export default function App() {
               twAssets={twAssets} usAssets={usAssets}
               cryptoAssets={cryptoAssets} otherAssets={otherAssets}
               usdRate={usdRate} reload={load}
+              initialSub={assetSub}
             />
           )}
           {tab === "liab"     && <Liabilities liabilities={liabilities} pledges={pledges} reload={load} />}
