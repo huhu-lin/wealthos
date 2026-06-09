@@ -131,11 +131,30 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
     });
   }, [snapshots, netWorth]);
 
+  // ── 趨勢圖資料：尾端追加/取代「今日即時」點，確保與卡片數字對齊 ──
+  // 用本地時區算今天（toISOString 是 UTC，會差時區）
+  // 若最後一筆已是今天的快照，直接取代為即時值（快照可能是早上跑的舊值）
+  const snapshotsWithLive = useMemo(() => {
+    if (!snapshots.length) return snapshots;
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const livePoint = {
+      date: today,
+      assets: totalAssets,
+      liabilities: totalLiab,
+      net: netWorth,
+      leverage,
+    };
+    const last = snapshots[snapshots.length - 1];
+    if (last?.date === today) return [...snapshots.slice(0, -1), livePoint];
+    return [...snapshots, livePoint];
+  }, [snapshots, totalAssets, totalLiab, netWorth, leverage]);
+
   // ── 週/月/年歷史結算資料 ────────────────────────────────────
   const periodHistory = useMemo(() => {
-    if (!snapshots.length) return { week: [], month: [], year: [] };
-    // 升序排列
-    const sorted = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+    if (!snapshotsWithLive.length) return { week: [], month: [], year: [] };
+    // 升序排列，使用 snapshotsWithLive 確保今日快照反映即時持股（修正錯誤輸入後也能即時生效）
+    const sorted = [...snapshotsWithLive].sort((a, b) => a.date.localeCompare(b.date));
 
     const weekMap = {}, monthMap = {}, yearMap = {};
     sorted.forEach(s => {
@@ -192,26 +211,7 @@ export default function Overview({ twAssets, usAssets, cryptoAssets, otherAssets
       month: toResult(monthMap, (k) => { const [y, m] = k.split("-"); return `${y}年${parseInt(m)}月`; }, monthStart),
       year:  toResult(yearMap,  (k) => `${k}年`, yearStart),
     };
-  }, [snapshots]);
-
-  // ── 趨勢圖資料：尾端追加/取代「今日即時」點，確保與卡片數字對齊 ──
-  // 用本地時區算今天（toISOString 是 UTC，會差時區）
-  // 若最後一筆已是今天的快照，直接取代為即時值（快照可能是早上跑的舊值）
-  const snapshotsWithLive = useMemo(() => {
-    if (!snapshots.length) return snapshots;
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const livePoint = {
-      date: today,
-      assets: totalAssets,
-      liabilities: totalLiab,
-      net: netWorth,
-      leverage,
-    };
-    const last = snapshots[snapshots.length - 1];
-    if (last?.date === today) return [...snapshots.slice(0, -1), livePoint];
-    return [...snapshots, livePoint];
-  }, [snapshots, totalAssets, totalLiab, netWorth, leverage]);
+  }, [snapshotsWithLive]);
 
   // ── 圓餅圖資料（useMemo 保證穩定的物件參考）─────────────────────────
   const pieData = useMemo(() => [
