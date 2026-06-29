@@ -288,7 +288,7 @@ export default function TWAccount({ assets, reload }) {
                     <Btn onClick={() => del(a.id)}   color={C.red} outline small>刪除</Btn>
                   </div>
                 </div>
-                {tgtPct > 0 && <AllocBar actual={acctPct} target={tgtPct} total={total} value={a.value_twd} />}
+                {!isLev && tgtPct > 0 && <AllocBar actual={acctPct} target={tgtPct} total={total} value={a.value_twd} />}
               </div>
             );
           })}
