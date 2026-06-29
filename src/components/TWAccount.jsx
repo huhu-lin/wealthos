@@ -153,6 +153,14 @@ export default function TWAccount({ assets, reload }) {
   const cash  = assets.filter(a => a.type === "cash");
   const total = assets.reduce((s, x) => s + (x.value_twd || 0), 0);
 
+  // 大盤正二合計（leverage_ratio >= 2）
+  const leveragedEtfs      = etfs.filter(a => (a.leverage_ratio || 1) >= 2);
+  const regularEtfs        = etfs.filter(a => (a.leverage_ratio || 1) < 2);
+  const leveragedTotal     = leveragedEtfs.reduce((s, a) => s + (a.value_twd || 0), 0);
+  const leveragedTargetSum = leveragedEtfs.reduce((s, a) => s + (a.target || 0), 0);
+  const leveragedActualPct = total > 0 ? leveragedTotal / total * 100 : 0;
+  const leveragedTargetPct = leveragedTargetSum * 100;
+
   // ── 損益顯示 ─────────────────────────────────────────────
   const renderPnl = a => {
     const ct = a.cost_total || (a.cost || 0) * (a.shares || 0);
@@ -201,46 +209,91 @@ export default function TWAccount({ assets, reload }) {
             點擊「＋ 新增」開始記錄你的投資
           </div>
         </div>
-      ) : etfs.map(a => {
-        const acctPct = total > 0 ? a.value_twd / total * 100 : 0;
-        const tgtPct  = (a.target || 0) * 100;
-        return (
-          <div key={a.id} className="wos-row" style={{
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderLeft: `3px solid ${C.accent}`,
-            borderRadius: 12,
-            padding: "14px 18px",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
-              <div style={{ minWidth: 0, flex: "1 1 160px" }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</span>
-                  {a.ticker && <Badge text={a.ticker} color={C.blue} />}
-                  {(a.leverage_ratio || 1) > 1 && <Badge text={`${a.leverage_ratio}x`} color={C.orange} />}
-                </div>
-                <div style={{ color: C.textMuted, fontSize: 11 }}>
-                  {a.shares > 0 && `${a.shares.toLocaleString()} 股`}
-                  {a.price > 0  && ` × NT$${a.price}`}
-                  {a.cost > 0   && ` ｜ 成本 NT$${a.cost}`}
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ color: C.accent, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
-                    NT${fmt(a.value_twd)}
+      ) : (
+        <>
+          {/* ── 大盤正二合計（有槓桿 ETF 才顯示）*/}
+          {leveragedEtfs.length > 0 && (
+            <div style={{
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              borderLeft: `3px solid ${C.gold}`,
+              borderRadius: 12,
+              padding: "14px 18px",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, fontSize: 14 }}>大盤正二合計</span>
+                    <Badge text={`${leveragedEtfs.length} 檔`} color={C.gold} />
+                    <Badge text="2x" color={C.orange} />
                   </div>
-                  {renderPnl(a)}
+                  <div style={{ color: C.textMuted, fontSize: 11 }}>
+                    {leveragedEtfs.map(a => a.ticker || a.name).filter(Boolean).join(" · ")}
+                  </div>
                 </div>
-                <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
-                <Btn onClick={() => del(a.id)}   color={C.red} outline small>刪除</Btn>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ color: C.gold, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
+                    NT${fmt(leveragedTotal)}
+                  </div>
+                  <div style={{ color: C.textMuted, fontSize: 11, marginTop: 2 }}>
+                    佔台股 {leveragedActualPct.toFixed(1)}%
+                  </div>
+                </div>
               </div>
+              {leveragedTargetPct > 0 && (
+                <AllocBar
+                  actual={leveragedActualPct}
+                  target={leveragedTargetPct}
+                  total={total}
+                  value={leveragedTotal}
+                />
+              )}
             </div>
-            {/* 目標配置進度條（有設目標才顯示） */}
-            {tgtPct > 0 && <AllocBar actual={acctPct} target={tgtPct} total={total} value={a.value_twd} />}
-          </div>
-        );
-      })}
+          )}
+
+          {/* ── 個別 ETF 卡片（槓桿優先，再一般）*/}
+          {[...leveragedEtfs, ...regularEtfs].map(a => {
+            const acctPct   = total > 0 ? a.value_twd / total * 100 : 0;
+            const tgtPct    = (a.target || 0) * 100;
+            const isLev     = (a.leverage_ratio || 1) >= 2;
+            return (
+              <div key={a.id} className="wos-row" style={{
+                background: C.surface,
+                border: `1px solid ${C.border}`,
+                borderLeft: `3px solid ${isLev ? C.gold : C.accent}`,
+                borderRadius: 12,
+                padding: "14px 18px",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 5, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</span>
+                      {a.ticker && <Badge text={a.ticker} color={C.blue} />}
+                      {(a.leverage_ratio || 1) > 1 && <Badge text={`${a.leverage_ratio}x`} color={C.orange} />}
+                    </div>
+                    <div style={{ color: C.textMuted, fontSize: 11 }}>
+                      {a.shares > 0 && `${a.shares.toLocaleString()} 股`}
+                      {a.price > 0  && ` × NT$${a.price}`}
+                      {a.cost > 0   && ` ｜ 成本 NT$${a.cost}`}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: isLev ? C.gold : C.accent, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: 15 }}>
+                        NT${fmt(a.value_twd)}
+                      </div>
+                      {renderPnl(a)}
+                    </div>
+                    <Btn onClick={() => openEdit(a)} outline small>編輯</Btn>
+                    <Btn onClick={() => del(a.id)}   color={C.red} outline small>刪除</Btn>
+                  </div>
+                </div>
+                {!isLev && tgtPct > 0 && <AllocBar actual={acctPct} target={tgtPct} total={total} value={a.value_twd} />}
+              </div>
+            );
+          })}
+        </>
+      )}
 
       {/* ── 台幣現金區塊 ─────────────────────────────────── */}
       <SectionHeader
