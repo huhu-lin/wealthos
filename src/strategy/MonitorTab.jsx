@@ -8,6 +8,7 @@ import { C } from "../constants/theme";
 import Card from "../components/ui/Card";
 import { Btn, Input } from "./ui";
 import { fetchTWKline, fetchUSKline } from "./klineApi";
+import { getGroupHoldingValue } from "../utils/strategyIndicators";
 import KChart from "./KChart";
 import PreMarketSummary from "./PreMarketSummary";
 
@@ -15,7 +16,15 @@ import PreMarketSummary from "./PreMarketSummary";
 // 頁面被瀏覽器回收（Page Discard）後重載，從 sessionStorage 還原填寫中的草稿
 // 避免用戶切換視窗核對資料後回來發現表單清空
 const MONITOR_FORM_DRAFT_KEY = 'wealthos_monitor_form_draft';
-const MONITOR_FORM_DEFAULT = { ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, entry_date:"", strategy_mode:'signal', gate_pct:13 };
+const MONITOR_FORM_DEFAULT = { ticker:"", is_us:false, target:0.5, j_entry:10, j_exit:90, amount:0, entry_date:"", strategy_mode:'signal', gate_pct:13, merge_tickers_text:"" };
+
+// "00675L, 00631L" → ["00675L","00631L"]（過濾空白、去除與主 ticker 重複）
+function parseMergeTickers(text, mainTicker) {
+  return (text || "")
+    .split(",")
+    .map(s => s.trim().toUpperCase())
+    .filter(s => s && s !== mainTicker);
+}
 
 export default function MonitorTab({ allAssets }) {
   const [tickers, setTickers] = useState([]);
@@ -78,10 +87,12 @@ export default function MonitorTab({ allAssets }) {
 
   async function handleSave() {
     if (!form.ticker.trim()) return;
+    const { merge_tickers_text, ...rest } = form;
+    const payload = { ...rest, merge_tickers: parseMergeTickers(merge_tickers_text, form.ticker) };
     if (editId) {
-      await supabase.from("strategy_tickers").update(form).eq("id", editId);
+      await supabase.from("strategy_tickers").update(payload).eq("id", editId);
     } else {
-      await supabase.from("strategy_tickers").insert(form);
+      await supabase.from("strategy_tickers").insert(payload);
     }
     setShowAdd(false); setEditId(null);
     clearFormDraft(); // 儲存成功後清除 sessionStorage 草稿
@@ -96,7 +107,7 @@ export default function MonitorTab({ allAssets }) {
   }
 
   function handleEdit(t) {
-    const editForm = { ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount||0, entry_date:t.entry_date||"", strategy_mode:t.strategy_mode||'signal', gate_pct:t.gate_pct||13 };
+    const editForm = { ticker:t.ticker, is_us:t.is_us, target:t.target, j_entry:t.j_entry, j_exit:t.j_exit, amount:t.amount||0, entry_date:t.entry_date||"", strategy_mode:t.strategy_mode||'signal', gate_pct:t.gate_pct||13, merge_tickers_text:(t.merge_tickers||[]).join(", ") };
     setForm(editForm);
     try { sessionStorage.setItem(MONITOR_FORM_DRAFT_KEY, JSON.stringify(editForm)); } catch {}
     setEditId(t.id);
@@ -174,6 +185,11 @@ export default function MonitorTab({ allAssets }) {
               <Input type="date" value={form.entry_date||""} onChange={e=>updateForm({entry_date:e.target.value})} style={{width:"100%", colorScheme:"dark"}}/>
               <div style={{fontSize:10, color:C.textMuted, marginTop:3}}>填入後顯示策略模擬 vs 實際庫存對比</div>
             </div>
+            <div>
+              <div style={{fontSize:11, color:C.textMuted, marginBottom:4}}>合併計算的其他庫存代號（選填）</div>
+              <Input value={form.merge_tickers_text} onChange={e=>updateForm({merge_tickers_text:e.target.value})} placeholder="如同為正二的 00675L，逗號分隔" style={{width:"100%"}}/>
+              <div style={{fontSize:10, color:C.textMuted, marginTop:3}}>持倉佔比計算會把這些代號的庫存市值一併加總（K線/訊號仍只用上方代號）</div>
+            </div>
           </div>
           <Btn onClick={handleSave}>{editId?"儲存修改":"確認新增"}</Btn>
         </Card>
@@ -183,7 +199,7 @@ export default function MonitorTab({ allAssets }) {
         <div style={{display:"flex", gap:8, flexWrap:"wrap", marginBottom:16}}>
           {tickers.map(t => (
             <div key={t.id} style={{display:"flex", alignItems:"center", gap:6, background:C.surface2, border:`1px solid ${C.border}`, borderRadius:8, padding:"6px 10px"}}>
-              <span style={{fontWeight:600, fontSize:13}}>{t.ticker}</span>
+              <span style={{fontWeight:600, fontSize:13}}>{t.ticker}{t.merge_tickers?.length > 0 && <span style={{color:C.textMuted, fontWeight:400}}> (+{t.merge_tickers.join(", ")})</span>}</span>
               <span style={{color:C.textMuted, fontSize:11}}>{t.is_us?"美股":"台股"}</span>
               <span style={{color:C.textMuted, fontSize:11}}>J:{t.j_entry}/{t.j_exit}</span>
               {(t.strategy_mode||'signal')==='asymmetric' && <span style={{color:C.orange, fontSize:10, fontWeight:600}}>⚡非對稱</span>}
@@ -205,11 +221,11 @@ export default function MonitorTab({ allAssets }) {
           <PreMarketSummary tickers={tickers} klineMap={klineMap} allAssets={allAssets} />
           {tickers.map(t => {
             const _cashName = t.is_us ? 'USD' : '現金';
-            const _holding  = allAssets.find(a => a.name === t.ticker);
+            const _holdingValue = getGroupHoldingValue(allAssets, t.ticker, t.merge_tickers);
             const _cash     = allAssets.find(a => a.name === _cashName);
-            const _pool     = (_holding?.value_twd || 0) + (_cash?.value_twd || 0);
+            const _pool     = _holdingValue + (_cash?.value_twd || 0);
             const _drift    = _pool > 0
-              ? Math.abs((_holding?.value_twd || 0) / _pool * 100 - t.target * 100)
+              ? Math.abs(_holdingValue / _pool * 100 - t.target * 100)
               : 0;
             return (
               <KChart
@@ -218,6 +234,7 @@ export default function MonitorTab({ allAssets }) {
                 ticker={t.ticker}
                 isUS={t.is_us}
                 assets={allAssets}
+                mergeTickers={t.merge_tickers}
                 target={t.target}
                 jEntry={t.j_entry}
                 jExit={t.j_exit}

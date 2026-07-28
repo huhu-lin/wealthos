@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { calcBB, calcKDJ } from '../src/utils/strategyIndicators.js';
+import { calcBB, calcKDJ, getGroupHoldingValue } from '../src/utils/strategyIndicators.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -243,8 +243,7 @@ export default async function handler(req) {
       ? '市場可能反彈，建議買入 ETF 恢復目標比例'
       : '市場可能回落，建議賣出 ETF 恢復目標比例';
 
-    const holding      = assets.find(a => (a.ticker || a.name) === ticker);
-    const holdingValue = holding?.value_twd ?? 0;
+    const holdingValue = getGroupHoldingValue(assets, ticker, st.merge_tickers);
     const cashAsset    = isUS
       ? assets.find(a => a.name === 'USD')
       : assets.find(a => a.name === '現金');

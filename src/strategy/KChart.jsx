@@ -7,7 +7,7 @@ import { useEffect, useRef, useMemo } from "react";
 import { createChart } from "lightweight-charts";
 import { C } from "../constants/theme";
 import { useIsMobile } from "../utils/useBreakpoint";
-import { computeIndicators } from "../utils/strategyIndicators";
+import { computeIndicators, getGroupHoldingValue } from "../utils/strategyIndicators";
 import Card from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { fmt } from "./ui";
@@ -74,7 +74,7 @@ export function calcMonitorPerformance(klineData, { amount, target, j_entry, j_e
 }
 
 // ─── 圖表元件 ────────────────────────────────────────────────
-export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13, tickerConfig=null, currentDrift=0, onRecordRebal=null }) {
+export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=10, jExit=90, strategyMode='signal', driftPct=25, gatePct=13, tickerConfig=null, currentDrift=0, onRecordRebal=null, mergeTickers=[] }) {
   const chartRef = useRef(null);
   const kdjRef = useRef(null);
   const chartInstance = useRef(null);
@@ -246,9 +246,8 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
   }
 
   const cashName = isUS ? 'USD' : '現金';
-  const holdingAsset = assets.find(a => a.name === ticker);
   const cashAsset = assets.find(a => a.name === cashName);
-  const holdingValue = holdingAsset?.value_twd || 0;
+  const holdingValue = getGroupHoldingValue(assets, ticker, mergeTickers);
   const cashValue = cashAsset?.value_twd || 0;
   const total = holdingValue + cashValue;
   const actualPct = total > 0 ? holdingValue / total * 100 : 0;
@@ -395,15 +394,16 @@ export default function KChart({ data, ticker, isUS, assets, target=0.5, jEntry=
         const fmtVal = v => isUS ? `USD ${v.toLocaleString("en-US",{maximumFractionDigits:0})}` : `NT$${fmt(v)}`;
         const fmtPct = (v, showSign=true) => `${showSign && v>=0?"+":""}${v.toFixed(1)}%`;
 
-        // 實際庫存現值（從 assets 讀，若無則顯示 —）
+        // 實際庫存現值（從 assets 讀，若無則顯示 —；mergeTickers 併入同群組其他槓桿 ETF）
         const cashName   = isUS ? 'USD' : '現金';
-        const holdA      = assets.find(a => a.name === ticker);
+        const holdValueTwd = getGroupHoldingValue(assets, ticker, mergeTickers, 'value_twd');
+        const holdValueUsd = getGroupHoldingValue(assets, ticker, mergeTickers, 'value_usd');
         const cashA      = assets.find(a => a.name === cashName);
-        const actualNow  = (holdA?.value_twd || 0) + (cashA?.value_twd || 0);
+        const actualNow  = holdValueTwd + (cashA?.value_twd || 0);
         // 轉換為原始幣別（美股：除以匯率近似值，台股直接用 TWD）
         // 注意：這裡只做粗略換算，用 assets 表的 USD 欄位更精確
         const actualNowNative = isUS
-          ? ((holdA?.value_usd || 0) + (cashA?.value_usd || holdA?.value_twd / 32 || 0))
+          ? (holdValueUsd + (cashA?.value_usd || holdValueTwd / 32 || 0))
           : actualNow;
         const hasActual = actualNow > 0;
         const actualReturn = hasActual ? (actualNowNative - tickerConfig.amount) / tickerConfig.amount * 100 : null;

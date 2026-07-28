@@ -55,3 +55,12 @@ export function computeIndicators(data, { jEntry = 10, jExit = 90, strategyMode 
   const signals = checkSignals(closes, bb, kdj, jEntry, jExit, strategyMode);
   return { closes, highs, lows, bb, kdj, signals };
 }
+
+// 群組持倉市值：把 mergeTickers（例如同為槓桿正二的另一檔 ETF）的庫存也加總進來，
+// 用於計算「合併後」的實際佔比，避免多檔槓桿 ETF 各自對同一筆現金重複計算比例
+export function getGroupHoldingValue(assets, ticker, mergeTickers = [], field = 'value_twd') {
+  const tickers = [ticker, ...(mergeTickers || [])];
+  return (assets || [])
+    .filter(a => tickers.includes(a.name))
+    .reduce((s, a) => s + (a[field] || 0), 0);
+}

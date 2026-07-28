@@ -4,7 +4,7 @@
 // ============================================================
 
 import { C } from "../constants/theme";
-import { computeIndicators } from "../utils/strategyIndicators";
+import { computeIndicators, getGroupHoldingValue } from "../utils/strategyIndicators";
 import Card from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 
@@ -55,9 +55,8 @@ export default function PreMarketSummary({ tickers, klineMap, allAssets }) {
     const mode = t.strategy_mode || 'signal';
     if (mode === 'p007') {
       const cashName2 = t.is_us ? 'USD' : '現金';
-      const hAsset = allAssets.find(a => a.name === t.ticker);
       const cAsset = allAssets.find(a => a.name === cashName2);
-      const hVal = hAsset?.value_twd || 0;
+      const hVal = getGroupHoldingValue(allAssets, t.ticker, t.merge_tickers);
       const cVal = cAsset?.value_twd || 0;
       const tot  = hVal + cVal;
       if (tot > 0) {
@@ -92,11 +91,10 @@ export default function PreMarketSummary({ tickers, klineMap, allAssets }) {
       }
     }
 
-    // ── 持倉健康度 ──
+    // ── 持倉健康度（mergeTickers 併入同群組其他槓桿 ETF）──
     const cashName = t.is_us ? 'USD' : '現金';
-    const holdingAsset = allAssets.find(a => a.name === t.ticker);
     const cashAsset    = allAssets.find(a => a.name === cashName);
-    const holdingValue = holdingAsset?.value_twd || 0;
+    const holdingValue = getGroupHoldingValue(allAssets, t.ticker, t.merge_tickers);
     const cashValue    = cashAsset?.value_twd    || 0;
     const total        = holdingValue + cashValue;
     const actualPct    = total > 0 ? holdingValue / total * 100 : 0;
